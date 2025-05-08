@@ -1,0 +1,54 @@
+#ifndef SOURCE_UTILITY_LED_COLOR_H_
+#define SOURCE_UTILITY_LED_COLOR_H_
+/**********************************************************************************************************************
+ * Includes
+ *********************************************************************************************************************/
+
+#include "stdint.h"
+
+/**********************************************************************************************************************
+ * Exported definitions and macros
+ *********************************************************************************************************************/
+
+/**********************************************************************************************************************
+ * Exported types
+ *********************************************************************************************************************/
+
+/* clang-format off */
+typedef enum eLedColor {
+    eLedColor_First = 0,
+    eLedColor_Off = eLedColor_First,
+    eLedColor_Red,
+    eLedColor_Green,
+    eLedColor_Blue,
+    eLedColor_Yellow,
+    eLedColor_Cyan,
+    eLedColor_Magenta,
+    eLedColor_White,
+    eLedColor_Last
+} eLedColor_t;
+
+typedef struct sLedColorRgb {
+    uint32_t color;
+} sLedColorRgb_t;
+
+typedef struct sLedColorHsv {
+    uint8_t hue;
+    uint8_t saturation;
+    uint8_t value;
+} sLedColorHsv_t;
+/* clang-format on */
+
+/**********************************************************************************************************************
+ * Exported variables
+ *********************************************************************************************************************/
+
+/**********************************************************************************************************************
+ * Prototypes of exported functions
+ *********************************************************************************************************************/
+
+const sLedColorRgb_t LED_GetColorRgb (const eLedColor_t color);
+void LED_HsvToRgb (sLedColorHsv_t *hsv);
+void LED_RgbToHsv (sLedColorRgb_t *rgb);
+
+#endif /* SOURCE_UTILITY_LED_COLOR_H_ */
