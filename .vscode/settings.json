@@ -1,6 +1,7 @@
 {
     "files.associations": {
         "ws2812b_driver.h": "c",
-        "ws2812b_api.h": "c"
+        "ws2812b_api.h": "c",
+        "type_traits": "c"
     }
 }
