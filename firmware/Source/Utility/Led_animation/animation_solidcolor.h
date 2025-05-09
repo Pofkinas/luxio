@@ -6,6 +6,8 @@
 
 #include <stdbool.h>
 #include <stdint.h>
+#include "ws2812b_api.h"
+#include "led_color.h"
 
 /**********************************************************************************************************************
  * Exported definitions and macros
@@ -15,12 +17,13 @@
  * Exported types
  *********************************************************************************************************************/
 
-typedef struct sSolidColorData {
-    void *device_context;
-    bool (*fill_color_callback)(const void *device_context, uint8_t r, uint8_t g, uint8_t b);
+/* clang-format off */ 
+typedef struct sSolidAnimationData {
+    eWs2812b_t device;
     uint8_t brightness;
-    uint32_t led_color;
-} sSolidColorData_t;
+    sLedColorRgb_t rgb;
+} sSolidAnimationData_t;
+/* clang-format on */
 
 /**********************************************************************************************************************
  * Exported variables
@@ -30,6 +33,6 @@ typedef struct sSolidColorData {
  * Prototypes of exported functions
  *********************************************************************************************************************/
 
-bool Animation_SolidColor_PepareBuffer (const sSolidColorData_t *data);
+void Animation_SolidColor_Run (const void *context);
 
 #endif /* SOURCE_UTILITY_LED_ANIMATION_ANIMATION_SOLIDCOLOR_H_ */

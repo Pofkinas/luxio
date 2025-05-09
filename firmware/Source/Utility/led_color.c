@@ -3,6 +3,7 @@
  *********************************************************************************************************************/
 
 #include "led_color.h"
+#include <stddef.h>
 
 /**********************************************************************************************************************
  * Private definitions and macros
@@ -15,8 +16,9 @@
 /**********************************************************************************************************************
  * Private constants
  *********************************************************************************************************************/
- 
-const static uint32_t g_static_led_color_lut[eLedColor_Last] = {
+
+/* clang-format off */  
+const static uint32_t g_static_rgb_value_lut[eLedColor_Last] = {
     [eLedColor_Off] = 0x000000,
     [eLedColor_Red] = 0xFF0000,
     [eLedColor_Green] = 0x00FF00,
@@ -26,6 +28,15 @@ const static uint32_t g_static_led_color_lut[eLedColor_Last] = {
     [eLedColor_Magenta] = 0xFF00FF,
     [eLedColor_White] = 0xFFFFFF
 };
+
+const static sLedColorHsv_t g_static_hsv_value_lut[eLedColor_Last] = {
+    [eLedColor_Off] = {
+        .hue = 0,
+        .saturation = 0,
+        .value = 0
+    }
+};
+/* clang-format on */ 
 
 /**********************************************************************************************************************
  * Private variables
@@ -54,17 +65,31 @@ const sLedColorRgb_t LED_GetColorRgb (const eLedColor_t color) {
         return led_color;
     }
 
-    led_color.color = g_static_led_color_lut[color];
+    led_color.color = g_static_rgb_value_lut[color];
 
     return led_color;
 }
 
-void LED_HsvToRgb(sLedColorHsv_t *hsv) {
-    sLedColorRgb_t *rgb_color = (sLedColorRgb_t *) hsv;
+const sLedColorHsv_t LED_GetColorHsv (const eLedColor_t color) {
+    sLedColorHsv_t led_color = {0};
+    
+    if ((color < eLedColor_First) || (color >= eLedColor_Last)) {
+        return led_color;
+    }
 
-    uint8_t h = hsv->hue;
-    uint8_t s = hsv->saturation;
-    uint8_t v = hsv->value;
+    led_color = g_static_hsv_value_lut[color];
+
+    return led_color;
+}
+
+void LED_HsvToRgb(const sLedColorHsv_t hsv, sLedColorRgb_t *rgb) {
+    if (rgb == NULL) {
+        return;
+    }
+    
+    uint8_t h = hsv.hue;
+    uint8_t s = hsv.saturation;
+    uint8_t v = hsv.value;
 
     uint8_t r, g, b;
 
@@ -114,33 +139,37 @@ void LED_HsvToRgb(sLedColorHsv_t *hsv) {
         }
     }
 
-    rgb_color->color = ((uint32_t)r << 16) | ((uint32_t)g << 8) | b;
+    rgb->color = ((uint32_t)r << 16) | ((uint32_t)g << 8) | b;
+
+    return;
 }
 
-void LED_RgbToHsv(sLedColorRgb_t *rgb) {
-    sLedColorHsv_t *hsv_color = (sLedColorHsv_t *) rgb;
+void LED_RgbToHsv(const sLedColorRgb_t rgb, sLedColorHsv_t *hsv) {
+    if (hsv == NULL) {
+        return;
+    }
 
-    uint8_t r = (rgb->color >> 16) & 0xFF;
-    uint8_t g = (rgb->color >> 8) & 0xFF;
-    uint8_t b = rgb->color & 0xFF;
+    uint8_t r = (rgb.color >> 16) & 0xFF;
+    uint8_t g = (rgb.color >> 8) & 0xFF;
+    uint8_t b = rgb.color & 0xFF;
 
     uint8_t rgb_min = r < g ? (r < b ? r : b) : (g < b ? g : b);
     uint8_t rgb_max = r > g ? (r > b ? r : b) : (g > b ? g : b);
     
     uint8_t delta = rgb_max - rgb_min;
 
-    hsv_color->value = rgb_max;
+    hsv->value = rgb_max;
 
     if (rgb_max == 0) {
-        hsv_color->saturation = 0;
-        hsv_color->hue = 0;
+        hsv->saturation = 0;
+        hsv->hue = 0;
         return;
     }
 
-    hsv_color->saturation = (delta * 255) / rgb_max;
+    hsv->saturation = (delta * 255) / rgb_max;
 
     if (delta == 0) {
-        hsv_color->hue = 0;
+        hsv->hue = 0;
         return;
     }
 
@@ -156,7 +185,7 @@ void LED_RgbToHsv(sLedColorRgb_t *rgb) {
 
     if (hue < 0) hue += 256;
 
-    hsv_color->hue = (uint8_t)hue;
+    hsv->hue = (uint8_t)hue;
 
     return;
 }

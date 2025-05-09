@@ -9,7 +9,7 @@
  * Private definitions and macros
  *********************************************************************************************************************/
 
-#define MAX_BRIGHTNESS 255U
+#define MAX_BRIGHTNESS 255
 
 /**********************************************************************************************************************
  * Private typedef
@@ -31,6 +31,32 @@
  * Prototypes of private functions
  *********************************************************************************************************************/
  
+void Animation_SolidColor_FillBuffer (const sSolidAnimationData_t *data) {
+    if (!WS2812B_API_IsCorrectDevice(data->device)) {
+        return;
+    }
+    
+    if (data == NULL) {
+        return;
+    }
+
+    if (data->brightness == 0) {
+        return;
+    }
+
+    uint8_t r = (data->rgb.color >> 16) & 0xFF;
+    uint8_t g = (data->rgb.color >> 8) & 0xFF;
+    uint8_t b = data->rgb.color & 0xFF;
+
+    r = (r * data->brightness) / MAX_BRIGHTNESS;
+    g = (g * data->brightness) / MAX_BRIGHTNESS;
+    b = (b * data->brightness) / MAX_BRIGHTNESS;
+
+    WS2812B_API_FillColor(data->device, r, g, b);
+
+    return;
+}
+
 /**********************************************************************************************************************
  * Definitions of private functions
  *********************************************************************************************************************/
@@ -39,22 +65,6 @@
  * Definitions of exported functions
  *********************************************************************************************************************/
 
-bool Animation_SolidColor_PepareBuffer (const sSolidColorData_t *data) {
-    if (data == NULL) {
-        return false;
-    }
-
-    if (data->brightness == 0) {
-        return false;
-    }
-
-    uint8_t r = (data->led_color >> 16) & 0xFF;
-    uint8_t g = (data->led_color >> 8) & 0xFF;
-    uint8_t b = data->led_color & 0xFF;
-
-    r = (r * data->brightness) / MAX_BRIGHTNESS;
-    g = (g * data->brightness) / MAX_BRIGHTNESS;
-    b = (b * data->brightness) / MAX_BRIGHTNESS;
-
-    return data->fill_color_callback(data->device_context, r, g, b);
+void Animation_SolidColor_Run (const void *context) {
+    Animation_SolidColor_FillBuffer((sSolidAnimationData_t*) context);
 }

@@ -26,8 +26,7 @@ typedef enum eWs2812b {
 
 typedef enum eLedAnimation {
     eLedAnimation_First = 0,
-    eLedAnimation_Off = eLedAnimation_First,
-    eLedAnimation_SolidColor,
+    eLedAnimation_SolidColor = eLedAnimation_First,
     eLedAnimation_SegmentFill,
     eLedAnimation_Blink,
     eLedAnimation_Rainbow,
@@ -48,28 +47,23 @@ typedef struct sLedAnimationDesc {
     void *data;
 } sLedAnimationDesc_t;
 
-typedef struct sLedAnimationCommon {
-    bool is_loop;
-} sLedAnimationCommon_t;
+typedef struct sLedAnimationInstance {
+    void *context;
+    void (*build_animation)(const void *context);
+} sLedAnimationInstance_t;
 
 typedef struct sLedAnimationSolidColor {
     eColorFormat_t color_format;
-    union {
-        sLedColorRgb_t rgb;
-        sLedColorHsv_t hsv;
-    } led_color;
+    sLedColorRgb_t rgb;
+    sLedColorHsv_t hsv;
 } sLedAnimationSolidColor_t;
 
 typedef struct sLedAnimationSegmentFill {
     eColorFormat_t color_format;
-    union {
-        sLedColorRgb_t rgb;
-        sLedColorHsv_t hsv;
-    } base_color;
-    union {
-        sLedColorRgb_t rgb;
-        sLedColorHsv_t hsv;
-    } segment_color;
+    sLedColorRgb_t rgb_base;
+    sLedColorHsv_t hsv_base;
+    sLedColorRgb_t rgb_segment;
+    sLedColorHsv_t hsv_segment;
     size_t segment_start_led;
     size_t segment_end_led;
 } sLedAnimationSegmentFill_t;
@@ -84,10 +78,14 @@ typedef struct sLedAnimationSegmentFill {
  *********************************************************************************************************************/
 
 bool WS2812B_API_Init (void);
-bool WS2812B_API_Execute (sLedAnimationDesc_t *animation_data);
+bool WS2812B_API_BuildAnimation (sLedAnimationDesc_t *animation_data);
+bool WS2812B_API_ClearAnimations (const eWs2812b_t device);
+bool WS2812B_API_Start (const eWs2812b_t device);
 bool WS2812B_API_Stop (const eWs2812b_t device);
-bool WS2812B_API_SetColor (const void *device_context, size_t led_number, const uint8_t r, const uint8_t g, const uint8_t b);
-bool WS2812B_API_FillColor (const void *device_context, const uint8_t r, const uint8_t g, const uint8_t b);
-bool WS2812B_API_FillSegment (const void *device_context, const size_t start_led, const size_t end_led, const uint8_t r, const uint8_t g, const uint8_t b);
+bool WS2812B_API_Reset (const eWs2812b_t device);
+bool WS2812B_API_IsCorrectDevice (const eWs2812b_t device);
+bool WS2812B_API_SetColor (const eWs2812b_t device, size_t led_number, const uint8_t r, const uint8_t g, const uint8_t b);
+bool WS2812B_API_FillColor (const eWs2812b_t device, const uint8_t r, const uint8_t g, const uint8_t b);
+bool WS2812B_API_FillSegment (const eWs2812b_t device, const size_t start_led, const size_t end_led, const uint8_t r, const uint8_t g, const uint8_t b);
 
 #endif /* SOURCE_API_WS2812B_API_H_ */

@@ -4,7 +4,7 @@
  * Includes
  *********************************************************************************************************************/
 
-#include "stdint.h"
+#include <stdint.h>
 
 /**********************************************************************************************************************
  * Exported definitions and macros
@@ -48,7 +48,8 @@ typedef struct sLedColorHsv {
  *********************************************************************************************************************/
 
 const sLedColorRgb_t LED_GetColorRgb (const eLedColor_t color);
-void LED_HsvToRgb (sLedColorHsv_t *hsv);
-void LED_RgbToHsv (sLedColorRgb_t *rgb);
+const sLedColorHsv_t LED_GetColorHsv (const eLedColor_t color);
+void LED_HsvToRgb (const sLedColorHsv_t hsv, sLedColorRgb_t *rgb);
+void LED_RgbToHsv (const sLedColorRgb_t rgb, sLedColorHsv_t *hsv);
 
 #endif /* SOURCE_UTILITY_LED_COLOR_H_ */
