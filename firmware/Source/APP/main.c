@@ -12,6 +12,7 @@
 #include "stm32f4xx_ll_usart.h"
 #include "usart.h"
 #include "cli_app.h"
+#include "ws2812b_api.h"
 #include "debug_api.h"
 #include "timer_driver.h"
 
@@ -126,6 +127,7 @@ int main (void) {
     Timer_Driver_Start(eTimerDriver_TIM10);
 
     CLI_APP_Init(eUartBaudrate_115200);
+    WS2812B_API_Init();
 
     TRACE_INFO("Start OK\n");
 

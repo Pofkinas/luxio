@@ -54,6 +54,14 @@ static sMessage_t g_response = {.data = g_response_buffer, .size = RESPONSE_MESS
 
 /* clang-format off */
 static sCmdDesc_t g_static_cli_lut[eCliCommand_Last] = {
+    [eCliCommand_RgbToHsv] = {
+        DEFINE_CMD("rgb:"),
+        .handler = CLI_APP_Led_Handlers_RgbToHsv
+    },
+    [eCliCommand_HsvToRgb] = {
+        DEFINE_CMD("hsv:"),
+        .handler = CLI_APP_Led_Handlers_HsvToRgb
+    }
 };
 /* clang-format on */
 
@@ -77,12 +85,6 @@ static void CLI_APP_Thread (void *arg) {
             if (!CMD_API_FindCommand(g_command, &g_response, g_static_cli_lut, eCliCommand_Last)){
                 TRACE_ERR(g_response.data);
             }
-
-//            if (!CMD_API_FindCommand(g_command, &g_response, g_static_cli_lut, eCliCommand_Last)){
-//                TRACE_INFO(g_response.data);
-//            } else {
-//                TRACE_ERR(g_response.data);
-//            }
 
             Heap_API_Free(g_command.data);
         }
