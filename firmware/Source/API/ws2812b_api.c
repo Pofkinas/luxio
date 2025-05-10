@@ -714,7 +714,7 @@ bool WS2812B_API_FillSegment (const eWs2812b_t device, const size_t start_led, c
 
     size_t led_byte = 0;
 
-    for (size_t led = start_led; led < end_led; led++) {
+    for (size_t led = start_led; led <= end_led; led++) {
         led_byte = led * LED_DATA_CHANNELS;
         g_ws2812b_api_dynamic_lut[device].led_data[led_byte] = r;
         g_ws2812b_api_dynamic_lut[device].led_data[led_byte + 1] = g;
