@@ -34,6 +34,41 @@ const static sLedColorHsv_t g_static_hsv_value_lut[eLedColor_Last] = {
         .hue = 0,
         .saturation = 0,
         .value = 0
+    },
+    [eLedColor_Red] = {
+        .hue = 0,
+        .saturation = 255,
+        .value = 255
+    },
+    [eLedColor_Green] = {
+        .hue = 85,
+        .saturation = 255,
+        .value = 255
+    },
+    [eLedColor_Blue] = {
+        .hue = 171,
+        .saturation = 255,
+        .value = 255
+    },
+    [eLedColor_Yellow] = {
+        .hue = 43,
+        .saturation = 255,
+        .value = 255
+    },
+    [eLedColor_Cyan] = {
+        .hue = 128,
+        .saturation = 255,
+        .value = 255
+    },
+    [eLedColor_Magenta] = {
+        .hue = 213,
+        .saturation = 255,
+        .value = 255
+    },
+    [eLedColor_White] = {
+        .hue = 0,
+        .saturation = 0,
+        .value = 255
     }
 };
 /* clang-format on */ 
