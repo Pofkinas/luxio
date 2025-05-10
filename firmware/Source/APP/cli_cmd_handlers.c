@@ -98,13 +98,12 @@ bool CLI_APP_Led_Handlers_RgbToHsv (sMessage_t arguments, sMessage_t *response) 
     }
 
     sLedColorRgb_t rgb = {0};
+    sLedColorHsv_t hsv = {0};
     rgb.color = (red << 16) | (green << 8) | blue;
 
-    LED_RgbToHsv(&rgb);
+    LED_RgbToHsv(rgb, &hsv);
 
-    sLedColorHsv_t *hsv = (sLedColorHsv_t *)&rgb;
-
-    TRACE_INFO("hue: %d, sat: %d, val: %d\n", hsv->hue, hsv->saturation, hsv->value);
+    TRACE_INFO("hue: %d, sat: %d, val: %d\n", hsv.hue, hsv.saturation, hsv.value);
 
     snprintf(response->data, response->size, "Operation successful\n");
 
@@ -153,16 +152,15 @@ bool CLI_APP_Led_Handlers_HsvToRgb (sMessage_t arguments, sMessage_t *response) 
     }
 
     sLedColorHsv_t hsv = {0};
+    sLedColorRgb_t rgb = {0};
 
     hsv.hue = hue;
     hsv.saturation = saturation;
     hsv.value = value;
 
-    LED_HsvToRgb(&hsv);
+    LED_HsvToRgb(hsv, &rgb);
 
-    sLedColorRgb_t *rgb = (sLedColorRgb_t *)&hsv;
-
-    TRACE_INFO("red: %d, green: %d, blue: %d\n", (rgb->color >> 16) & 0xFF, (rgb->color >> 8) & 0xFF, rgb->color & 0xFF);
+    TRACE_INFO("red: %d, green: %d, blue: %d\n", (rgb.color >> 16) & 0xFF, (rgb.color >> 8) & 0xFF, rgb.color & 0xFF);
     
     snprintf(response->data, response->size, "Operation successful\n");
 
