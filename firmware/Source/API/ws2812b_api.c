@@ -12,6 +12,7 @@
 #include "gpio_driver.h"
 
 #include "animation_solidcolor.h"
+#include "animation_segmentfill.h"
 
 /**********************************************************************************************************************
  * Private definitions and macros
@@ -200,6 +201,10 @@ static bool WS2812B_API_Update (const eWs2812b_t device) {
     //     is_execute_successful = false;
     // }
 
+    // for (int i = 0; i < 30; i += 3) {
+    //     TRACE_INFO("LED %d: R:%02X G:%02X B:%02X\n", i/3, g_ws2812b_api_dynamic_lut[device].led_data[i], g_ws2812b_api_dynamic_lut[device].led_data[i+1], g_ws2812b_api_dynamic_lut[device].led_data[i+2]);
+    // }
+
     if (!WS2812B_Driver_Set(g_ws2812b_api_static_lut[device].device, g_ws2812b_api_dynamic_lut[device].led_data, g_ws2812b_api_static_lut[device].max_led)) {
         return false;
     }
@@ -267,7 +272,25 @@ static bool WS2812B_API_BuildStaticAnimation (sLedAnimationDesc_t *static_animat
             animation_instance.build_animation(animation_instance.context);
         } break;
         case eLedAnimation_SegmentFill: {
-            
+            sLedAnimationSegmentFill_t *data = static_animation_data->data;
+            WS2812B_API_CastToRgb(data->color_format, &data->rgb_base, data->hsv_base);
+            WS2812B_API_CastToRgb(data->color_format, &data->rgb_segment, data->hsv_segment);
+
+            sSegmentFillData_t segment_ctx = {
+                .device = static_animation_data->device,
+                .brightness = static_animation_data->brightness,
+                .base_rgb = data->rgb_base,
+                .segment_rgb = data->rgb_segment,
+                .start_led = data->segment_start_led,
+                .end_led = data->segment_end_led
+            };
+
+            sLedAnimationInstance_t animation_instance = {
+                .context = &segment_ctx,
+                .build_animation = Animation_SegmentFill_Run
+            };
+
+            animation_instance.build_animation(animation_instance.context);
         } break;
         default: {
             return false;
@@ -392,7 +415,7 @@ bool WS2812B_API_BuildAnimation (sLedAnimationDesc_t *animation_data) {
             return WS2812B_API_BuildStaticAnimation(animation_data);
         }
         case eLedAnimation_SegmentFill: {
-
+            return WS2812B_API_BuildStaticAnimation(animation_data);
         } 
         case eLedAnimation_Blink: {
 
@@ -474,6 +497,8 @@ bool WS2812B_API_ClearAnimations (const eWs2812b_t device) {
 
         return false;
     }
+
+    memset(g_ws2812b_api_dynamic_lut[device].led_data, 0, g_ws2812b_api_static_lut[device].max_led * LED_DATA_CHANNELS);
 
     osMutexRelease(g_ws2812b_api_dynamic_lut[device].mutex);
 
@@ -600,6 +625,14 @@ bool WS2812B_API_Reset (const eWs2812b_t device) {
         return false;
     }
 
+    if (osMutexAcquire(g_ws2812b_api_dynamic_lut[device].mutex, MUTEX_TIMEOUT) != osOK) {
+        return false;
+    }
+
+    memset(g_ws2812b_api_dynamic_lut[device].led_data, 0, g_ws2812b_api_static_lut[device].max_led * LED_DATA_CHANNELS);
+
+    osMutexRelease(g_ws2812b_api_dynamic_lut[device].mutex);
+
     return true;
 }
 
@@ -673,7 +706,7 @@ bool WS2812B_API_FillSegment (const eWs2812b_t device, const size_t start_led, c
         return false;
     }
 
-    if (start_led >= end_led || end_led > g_ws2812b_api_static_lut[device].max_led) {
+    if (start_led >= end_led || end_led >= g_ws2812b_api_static_lut[device].max_led) {
         TRACE_ERR("Incorect segment range; start: %d, end: %d\n", start_led, end_led);
         
         return false;
@@ -681,7 +714,7 @@ bool WS2812B_API_FillSegment (const eWs2812b_t device, const size_t start_led, c
 
     size_t led_byte = 0;
 
-    for (size_t led = start_led; led <= end_led; led++) {
+    for (size_t led = start_led; led < end_led; led++) {
         led_byte = led * LED_DATA_CHANNELS;
         g_ws2812b_api_dynamic_lut[device].led_data[led_byte] = r;
         g_ws2812b_api_dynamic_lut[device].led_data[led_byte + 1] = g;

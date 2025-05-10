@@ -59,7 +59,6 @@ typedef struct sWs2812bDynamicDesc {
     eWs2812bDriver_State_t state;
     eDmaBuffer_State_t dma_buffer_state;
     uint8_t *led_data;
-    uint8_t last_led_data[LED_RESOLUTION * LED_DATA_CHANNELS];
     size_t led_to_set;
     size_t processed_led;
     size_t sent_led_count;
@@ -99,7 +98,6 @@ static sWs2812bDynamicDesc_t g_dynamic_ws2812b_lut[eWs2812bDriver_Last] = {
         .state = eWs2812bDriverState_Idle,
         .dma_buffer_state = eDmaBuffer_State_Empty,
         .led_data = NULL,
-        .last_led_data = {0},
         .led_to_set = 0,
         .processed_led = 0,
         .sent_led_count = 0,
@@ -208,14 +206,6 @@ static void WS2812B_Driver_ProcessDmaBuffer (const eWs2812bDriver_t device) {
     uint8_t *led_data = g_dynamic_ws2812b_lut[device].led_data + (g_dynamic_ws2812b_lut[device].processed_led * LED_DATA_CHANNELS);
     size_t leds_to_fill = LED_RESOLUTION;
 
-    if (g_dynamic_ws2812b_lut[device].processed_led >= LED_RESOLUTION) {
-        if (memcmp(g_dynamic_ws2812b_lut[device].last_led_data, led_data, LED_RESOLUTION * LED_DATA_CHANNELS) == 0) {
-            g_dynamic_ws2812b_lut[device].processed_led += LED_RESOLUTION;
-            
-            return;
-        }
-    }
-
     switch (g_dynamic_ws2812b_lut[device].dma_buffer_state) {
         case eDmaBuffer_State_Empty: {
             leds_to_fill = leds_to_fill * 2;
@@ -253,11 +243,8 @@ static void WS2812B_Driver_ProcessDmaBuffer (const eWs2812bDriver_t device) {
         }
 
         led_data += LED_DATA_CHANNELS;
-
         g_dynamic_ws2812b_lut[device].processed_led++;
     }
-
-    memcpy(g_dynamic_ws2812b_lut[device].last_led_data, led_data, LED_RESOLUTION * LED_DATA_CHANNELS);
 
     return;
 }

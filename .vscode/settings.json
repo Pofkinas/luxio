@@ -6,6 +6,7 @@
         "stdint.h": "c",
         "stdbool.h": "c",
         "debug_api.h": "c",
-        "vl53l0xv2_api.h": "c"
+        "vl53l0xv2_api.h": "c",
+        "stddef.h": "c"
     }
 }
