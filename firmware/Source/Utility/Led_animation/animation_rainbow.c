@@ -2,24 +2,27 @@
  * Includes
  *********************************************************************************************************************/
 
-#include "animation_segmentfill.h"
+#include "animation_rainbow.h"
 
 /**********************************************************************************************************************
  * Private definitions and macros
  *********************************************************************************************************************/
 
+#define MAX_HUE 255
+#define MAX_SPEED 64
+
 /**********************************************************************************************************************
  * Private typedef
  *********************************************************************************************************************/
- 
+
 /**********************************************************************************************************************
  * Private constants
  *********************************************************************************************************************/
- 
+
 /**********************************************************************************************************************
  * Private variables
  *********************************************************************************************************************/
- 
+
 /**********************************************************************************************************************
  * Exported variables and references
  *********************************************************************************************************************/
@@ -28,67 +31,93 @@
  * Prototypes of private functions
  *********************************************************************************************************************/
 
-void Animation_SegmentFill_FillBuffer (sSegmentFillData_t *data);
+void Animation_Rainbow_FillBuffer (sLedRainbow_t *context);
 
 /**********************************************************************************************************************
  * Definitions of private functions
  *********************************************************************************************************************/
- 
-void Animation_SegmentFill_FillBuffer (sSegmentFillData_t *data) {
-    if (data == NULL) {
+
+void Animation_Rainbow_FillBuffer (sLedRainbow_t *context) {
+    if (context == NULL) {
+        return;
+    }
+
+    if (context->animation_data == NULL) {
         return;
     }
     
-    if (!WS2812B_API_IsCorrectDevice(data->device)) {
+    if (!WS2812B_API_IsCorrectDevice(context->device)) {
         return;
     }
 
-    if (data->brightness == 0) {
+    if (context->brightness == 0) {
         return;
     }
 
-    uint8_t r_base = (data->base_rgb.color >> 16) & 0xFF;
-    uint8_t g_base = (data->base_rgb.color >> 8) & 0xFF;
-    uint8_t b_base = data->base_rgb.color & 0xFF;
+    sLedAnimationRainbow_t *rainbow_data = context->animation_data;
 
-    uint8_t r_segment = (data->segment_rgb.color >> 16) & 0xFF;
-    uint8_t g_segment = (data->segment_rgb.color >> 8) & 0xFF;
-    uint8_t b_segment = data->segment_rgb.color & 0xFF;
-
-    if (r_base != 0 || g_base != 0 || b_base != 0) {
-        r_base = LED_ScaleBrightness(r_base, data->brightness);
-        g_base = LED_ScaleBrightness(g_base, data->brightness);
-        b_base = LED_ScaleBrightness(b_base, data->brightness);
-
-        WS2812B_API_FillColor(data->device, r_base, g_base, b_base);
-    }
-
-    r_segment = LED_ScaleBrightness(r_segment, data->brightness);
-    g_segment = LED_ScaleBrightness(g_segment, data->brightness);
-    b_segment = LED_ScaleBrightness(b_segment, data->brightness);
-
-    if ((data->end_led - data->start_led) == 1) {
-        WS2812B_API_SetColor(data->device, data->start_led, r_segment, g_segment, b_segment);
-        
+    if (rainbow_data->segment_start_led >= rainbow_data->segment_end_led) {
         return;
     }
 
-    WS2812B_API_FillSegment(data->device, data->start_led, data->end_led, r_segment, g_segment, b_segment);
+    size_t led_count = rainbow_data->segment_end_led - rainbow_data->segment_start_led;
 
-    return;
+    switch (context->state) {
+        case eRainbowState_Init: {
+            context->hue_step = MAX_HUE / led_count;
+            context->hue_range = (rainbow_data->end_hsv_color.hue - rainbow_data->start_hsv_color.hue);
+            context->state = eRainbowState_Run;
+            context->base_hue = 0;
+        }
+        case eRainbowState_Run: {
+            sLedColorHsv_t hsv = {0};
+            sLedColorRgb_t rgb = {0};
+
+            hsv.saturation = rainbow_data->start_hsv_color.saturation;
+            hsv.value = rainbow_data->start_hsv_color.value;
+
+            if (rainbow_data->speed > MAX_SPEED) {
+                rainbow_data->speed = MAX_SPEED;
+            }
+
+            uint8_t red;
+            uint8_t green;
+            uint8_t blue;
+
+            for (size_t led = 0; led < led_count; led++) {
+                hsv.hue = (context->base_hue + led * context->hue_step) % context->hue_range + rainbow_data->start_hsv_color.hue;
+
+                LED_HsvToRgb(hsv, &rgb);
+                
+                red = LED_ScaleBrightness(((rgb.color >> 16) & 0xFF), context->brightness);
+                green = LED_ScaleBrightness(((rgb.color >> 8) & 0xFF), context->brightness);
+                blue = LED_ScaleBrightness((rgb.color & 0xFF), context->brightness);
+
+                if (!WS2812B_API_SetColor(context->device, rainbow_data->segment_start_led + led, red, green, blue)) {
+                    context->state = eRainbowState_Init;
+                    
+                    return;
+                }
+            }
+
+            context->base_hue = (context->base_hue + rainbow_data->speed) % context->hue_range;
+        } break;
+        default: {
+            return;
+        }
+    }
 }
 
 /**********************************************************************************************************************
  * Definitions of exported functions
  *********************************************************************************************************************/
 
-void Animation_SegmentFill_Run (void *context) {
+void Animation_Rainbow_Run (void *context) {
     if (context == NULL) {
         return;
     }
 
-    Animation_SegmentFill_FillBuffer((sSegmentFillData_t *)context);
+    Animation_Rainbow_FillBuffer((sLedRainbow_t*) context);
 
     return;
 }
-

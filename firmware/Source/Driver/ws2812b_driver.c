@@ -55,6 +55,7 @@ typedef struct sWs2812bStaticDesc {
 } sWs2812bStaticDesc_t;
 
 typedef struct sWs2812bDynamicDesc {
+    eWs2812bDriver_t device;
     bool is_init;
     eWs2812bDriver_State_t state;
     eDmaBuffer_State_t dma_buffer_state;
@@ -64,7 +65,8 @@ typedef struct sWs2812bDynamicDesc {
     size_t sent_led_count;
     uint32_t dma_buffer[WS2812B_DMA_BUFFER_SIZE];
     uint32_t dma_buffer_reset[WS2812B_DMA_BUFFER_SIZE];
-    void (*led_driver_callback) (const eWs2812bDriver_t device, const eLedTransferState_t transfer_state);
+    void (*led_driver_callback) (void *context, const eLedTransferState_t transfer_state);
+    void *callback_context;
     uint8_t high_time;
     uint8_t low_time;
 } sWs2812bDynamicDesc_t;
@@ -116,7 +118,7 @@ static sWs2812bDynamicDesc_t g_dynamic_ws2812b_lut[eWs2812bDriver_Last] = {
  * Prototypes of private functions
  *********************************************************************************************************************/
 
-static void WS2812B_Driver_Dma_ISRHandler (const eDmaDriver_t dma, const eDmaDriver_Flags_t flag);
+static void WS2812B_Driver_Dma_ISRHandler (void *isr_callback_contex, const eDmaDriver_Flags_t flag);
 static bool WS2812B_Driver_IsAllLedDataTransfered (const eWs2812bDriver_t device);
 static void WS2812B_Driver_ProcessDmaBuffer (const eWs2812bDriver_t device);
 static void WS2812B_Driver_Latch (const eWs2812bDriver_t device);
@@ -126,63 +128,61 @@ static void WS2812B_Driver_Stop (const eWs2812bDriver_t device);
  * Definitions of private functions
  *********************************************************************************************************************/
  
-static void WS2812B_Driver_Dma_ISRHandler (const eDmaDriver_t dma, const eDmaDriver_Flags_t flag) {
-    if ((dma < eDmaDriver_First) || (dma >= eDmaDriver_Last)) {
+static void WS2812B_Driver_Dma_ISRHandler (void *isr_callback_context, const eDmaDriver_Flags_t flag) {
+    if (isr_callback_context == NULL) {
         return;
     }
+    
+    sWs2812bDynamicDesc_t *context = (sWs2812bDynamicDesc_t *) isr_callback_context;
 
     if ((flag < eDmaDriver_Flags_First) || (flag >= eDmaDriver_Flags_Last)) {
         return;
     }
 
-    for (eWs2812bDriver_t device = eWs2812bDriver_First; device < eWs2812bDriver_Last; device++) {
-        if (g_static_ws2812b_lut[device].dma_stream != dma) {
-            continue;
-        }
+    DMA_Driver_ClearFlag(g_static_ws2812b_lut[context->device].dma_stream, flag);
 
-        DMA_Driver_ClearFlag(dma, flag);
+    if (flag == eDmaDriver_Flags_TE) {
+        g_dynamic_ws2812b_lut[context->device].led_driver_callback(g_dynamic_ws2812b_lut[context->device].callback_context, eLedTransferState_TransferError);
 
-        if (flag == eDmaDriver_Flags_TE) {
-            g_dynamic_ws2812b_lut[device].led_driver_callback(device, eLedTransferState_TransferError);
+        WS2812B_Driver_Reset(context->device);
+        
+        return;
+    }
 
-            WS2812B_Driver_Reset(device);
+    g_dynamic_ws2812b_lut[context->device].sent_led_count += LED_RESOLUTION;
             
-            return;
-        }
+    switch (g_dynamic_ws2812b_lut[context->device].state) {
+        case eWs2812bDriverState_Transfer: {
+            g_dynamic_ws2812b_lut[context->device].dma_buffer_state = (flag == eDmaDriver_Flags_TC) ? eDmaBuffer_State_SecondHalfEmpty : eDmaBuffer_State_FirstHalfEmpty;
 
-        g_dynamic_ws2812b_lut[device].sent_led_count += LED_RESOLUTION;
-                
-        switch (g_dynamic_ws2812b_lut[device].state) {
-            case eWs2812bDriverState_Transfer: {
-                g_dynamic_ws2812b_lut[device].dma_buffer_state = (flag == eDmaDriver_Flags_TC) ? eDmaBuffer_State_SecondHalfEmpty : eDmaBuffer_State_FirstHalfEmpty;
+            if (!WS2812B_Driver_IsAllLedDataTransfered(context->device)) {
+                WS2812B_Driver_ProcessDmaBuffer(context->device);
 
-                if (!WS2812B_Driver_IsAllLedDataTransfered(device)) {
-                    WS2812B_Driver_ProcessDmaBuffer(device);
-
-                    return;
-                }
-
-                WS2812B_Driver_Latch(device);
-
-                g_dynamic_ws2812b_lut[device].state = eWs2812bDriverState_Latch;         
-            } return;
-            case eWs2812bDriverState_Latch: {
-                if (WS2812B_Driver_IsAllLedDataTransfered(device)) {
-                    WS2812B_Driver_Stop(device);
-                }
-            } return;
-            case eWs2812bDriverState_Reset: {
-                if (WS2812B_Driver_IsAllLedDataTransfered(device)) {
-                    WS2812B_Driver_Latch(device);
-
-                    g_dynamic_ws2812b_lut[device].state = eWs2812bDriverState_Latch;
-                }
-            } return;
-            default: {
-                continue;
+                return;
             }
+
+            WS2812B_Driver_Latch(context->device);
+
+            g_dynamic_ws2812b_lut[context->device].state = eWs2812bDriverState_Latch;         
+        } break;
+        case eWs2812bDriverState_Latch: {
+            if (WS2812B_Driver_IsAllLedDataTransfered(context->device)) {
+                WS2812B_Driver_Stop(context->device);
+            }
+        } break;
+        case eWs2812bDriverState_Reset: {
+            if (WS2812B_Driver_IsAllLedDataTransfered(context->device)) {
+                WS2812B_Driver_Latch(context->device);
+
+                g_dynamic_ws2812b_lut[context->device].state = eWs2812bDriverState_Latch;
+            }
+        } break;
+        default: {
+            break;
         }
     }
+
+    return;
 }
 
 static bool WS2812B_Driver_IsAllLedDataTransfered (const eWs2812bDriver_t device) {
@@ -273,7 +273,7 @@ static void WS2812B_Driver_Stop (const eWs2812bDriver_t device) {
     DMA_Driver_DisableStream(g_static_ws2812b_lut[device].dma_stream);
     DMA_Driver_ClearAllFlags(g_static_ws2812b_lut[device].dma_stream);
 
-    g_dynamic_ws2812b_lut[device].led_driver_callback(device, eLedTransferState_Complete);
+    g_dynamic_ws2812b_lut[device].led_driver_callback(g_dynamic_ws2812b_lut[device].callback_context, eLedTransferState_Complete);
 
     g_dynamic_ws2812b_lut[device].dma_buffer_state = eDmaBuffer_State_Empty;
     g_dynamic_ws2812b_lut[device].state = eWs2812bDriverState_Idle;
@@ -285,7 +285,7 @@ static void WS2812B_Driver_Stop (const eWs2812bDriver_t device) {
  * Definitions of exported functions
  *********************************************************************************************************************/
 
-bool WS2812B_Driver_Init (const eWs2812bDriver_t device, led_driver_callback_t callback) {
+bool WS2812B_Driver_Init (const eWs2812bDriver_t device, led_driver_callback_t callback, void *callback_context) {
     if ((device < eWs2812bDriver_First) || (device >= eWs2812bDriver_Last)) {
         return false;
     }
@@ -293,12 +293,14 @@ bool WS2812B_Driver_Init (const eWs2812bDriver_t device, led_driver_callback_t c
     if (callback == NULL) {
         return false;
     }
+
+    if (callback_context == NULL) {
+        return false;
+    }
     
     if (g_dynamic_ws2812b_lut[device].is_init) {
         return true;
     }
-
-    g_dynamic_ws2812b_lut[device].led_driver_callback = callback;
 
     sDmaInit_t dma_init_struct = {
         .stream = g_static_ws2812b_lut[device].dma_stream,
@@ -318,6 +320,10 @@ bool WS2812B_Driver_Init (const eWs2812bDriver_t device, led_driver_callback_t c
     for (size_t led_bit = 0; led_bit < WS2812B_DMA_BUFFER_SIZE; led_bit++) {
         g_dynamic_ws2812b_lut[device].dma_buffer_reset[led_bit] = g_dynamic_ws2812b_lut[device].low_time;
     }
+
+    g_dynamic_ws2812b_lut[device].led_driver_callback = callback;
+    g_dynamic_ws2812b_lut[device].callback_context = callback_context;
+    g_dynamic_ws2812b_lut[device].device = device;
         
     g_dynamic_ws2812b_lut[device].is_init = true;
 

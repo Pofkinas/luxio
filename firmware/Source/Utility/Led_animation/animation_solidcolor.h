@@ -32,6 +32,6 @@ typedef struct sSolidAnimationData {
  * Prototypes of exported functions
  *********************************************************************************************************************/
 
-void Animation_SolidColor_Run (const void *context);
+void Animation_SolidColor_Run (void *context);
 
 #endif /* SOURCE_UTILITY_LED_ANIMATION_ANIMATION_SOLIDCOLOR_H_ */

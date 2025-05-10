@@ -36,7 +36,8 @@ typedef struct sDmaInit {
     uint32_t *periph_or_src_addr;
     uint32_t *mem_or_dest_addr;
     uint16_t data_buffer_size;
-    void (*isr_callback) (const eDmaDriver_t, const eDmaDriver_Flags_t);
+    void (*isr_callback) (void *isr_callback_context, const eDmaDriver_Flags_t);
+    void *isr_callback_context;
 } sDmaInit_t;
 /* clang-format on */
 

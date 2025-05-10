@@ -16,17 +16,11 @@
 #include "debug_api.h"
 #include "timer_driver.h"
 
-#include "vl53l0xv2_api.h"
-#include "i2c_api.h"
-
-#include "ws2812b_api.h"
-#include "led_color.h"
-
 /**********************************************************************************************************************
  * Private definitions and macros
  *********************************************************************************************************************/
 
-//#define DEBUG_MAIN
+#define DEBUG_MAIN
 
 /**********************************************************************************************************************
  * Private typedef
@@ -42,20 +36,9 @@ CREATE_MODULE_NAME (MAIN)
 CREATE_MODULE_NAME_EMPTY
 #endif
 
-const static osThreadAttr_t g_main_thread_attributes = {
-    .name = "Main_Test_Thread",
-    .stack_size = 128 * 16,
-    .priority = (osPriority_t) osPriorityNormal
-};
-
 /**********************************************************************************************************************
  * Private variables
  *********************************************************************************************************************/
-
-static osThreadId_t g_test_thread_id = NULL;
-static bool g_is_test_thread_init = false;
-
-static bool g_is_vl53l0x_init = false;
 
 /**********************************************************************************************************************
  * Exported variables and references
@@ -73,8 +56,6 @@ void configureTimerForRunTimeStats (void);
 void TIM1_UP_TIM10_IRQnHandler (void);
 
 unsigned long getRunTimeCounterValue (void);
-
-static void Main_Test_Thread (void* arg);
 
 /**********************************************************************************************************************
  * Definitions of private functions
@@ -148,12 +129,6 @@ int main (void) {
     CLI_APP_Init(eUartBaudrate_115200);
     WS2812B_API_Init();
 
-    // Init test thread
-    g_test_thread_id = osThreadNew(Main_Test_Thread, NULL, &g_main_thread_attributes);
-    I2C_API_Init(eI2c_1);
-
-    WS2812B_API_Init();
-
     TRACE_INFO("Start OK\n");
 
     osKernelStart();
@@ -165,162 +140,5 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 {
     if (htim->Instance == TIM2) {
         HAL_IncTick();
-    }
-}
-
-
-/**********************************************************************************************************************
- * Testing Thread
- *********************************************************************************************************************/
-
-uint32_t g_test_ccr = 0;
-
-static void Main_Test_Thread(void* arg) {
-    if (!g_is_test_thread_init) {
-//        for (uint8_t addr = 1; addr < 255; addr++) {
-//             if (I2C_API_Write(eI2c_1, addr, NULL, 0, 0, 0, 1000)) {
-//                 TRACE_INFO("Found I2C device at 0x%02X\n", addr);
-//             }
-//
-//             osDelay(1);
-//        }
-
-        if (VL53L0X_API_Init(eVl53l0x_1)) {
-            if (!VL53L0X_API_Enable(eVl53l0x_1)) {
-                TRACE_ERR("VL53L0X API Enable failed\n");
-            }
-
-            g_is_vl53l0x_init = true;
-        } else {
-            TRACE_ERR("VL53L0X API Init failed\n");
-        }
-
-        g_is_test_thread_init = true;
-    }
-
-    // uint16_t distance = 0;
-
-    // sLedAnimationSolidColor_t led_solid_color_r = {
-    //     .color_format = eColorFormat_RGB,
-    //     .rgb.color = 0xFF0000 // Red
-    // };
-
-    // sLedAnimationSolidColor_t led_solid_color_g = {
-    //     .color_format = eColorFormat_RGB,
-    //     .rgb = LED_GetColorRgb(eLedColor_Green) // Green
-    // };
-
-    // sLedAnimationSolidColor_t led_solid_color_b = {
-    //     .color_format = eColorFormat_HSV,
-    //     .hsv = {
-    //         .hue = 171,
-    //         .saturation = 255,
-    //         .value = 255
-    //     }
-    // };
-
-    sLedAnimationSegmentFill_t led_segment_fill_1 = {
-        .color_format = eColorFormat_HSV,
-        .hsv_base = {0},
-        .hsv_segment = LED_GetColorHsv(eLedColor_Magenta),
-        .segment_start_led = 1,
-        .segment_end_led = 5
-    };
-
-    sLedAnimationDesc_t led_animation = {
-        .device = eWs2812b_1,
-        .animation = eLedAnimation_SegmentFill,
-        .brightness = 0x0F, 
-        .data = &led_segment_fill_1
-    };
-
-    sLedAnimationSegmentFill_t led_segment_fill_2 = {
-        .color_format = eColorFormat_RGB,
-        .rgb_base = {0},
-        .rgb_segment = LED_GetColorRgb(eLedColor_Cyan),
-        .segment_start_led = 7,
-        .segment_end_led = 9
-    };
-
-    sLedAnimationDesc_t led_animation_2 = {
-        .device = eWs2812b_1,
-        .animation = eLedAnimation_SegmentFill,
-        .brightness = 0x0F, 
-        .data = &led_segment_fill_2
-    };
-
-    if (!WS2812B_API_Reset(eWs2812b_1)) {
-        TRACE_ERR("WS2812B API Reset failed\n");
-    }
-
-    while (1) {
-//        if (g_is_vl53l0x_init) {
-//            if (VL53L0X_API_GetDistance(eVl53l0x_1, &distance, 1000)) {
-//                TRACE_INFO("Distance: %d mm\n", distance);
-//            }
-//        }
-        // led_animation.data = &led_solid_color_r;
-
-        // if (!WS2812B_API_BuildAnimation(&led_animation)) {
-        //     TRACE_ERR("WS2812B API Build failed\n");
-        // }
-
-        // if (!WS2812B_API_Start(eWs2812b_1)) {
-        //     TRACE_ERR("WS2812B API Start failed\n");
-        // }
-
-        // if (!WS2812B_API_Reset(eWs2812b_1)) {
-        //     TRACE_ERR("WS2812B API Reset failed\n");
-        // }
-
-        // led_animation.data = &led_solid_color_g;
-
-        // if (!WS2812B_API_BuildAnimation(&led_animation)) {
-        //     TRACE_ERR("WS2812B API Build failed\n");
-        // }
-
-        // if (!WS2812B_API_Start(eWs2812b_1)) {
-        //     TRACE_ERR("WS2812B API Start failed\n");
-        // }
-
-        // if (!WS2812B_API_Reset(eWs2812b_1)) {
-        //     TRACE_ERR("WS2812B API Reset failed\n");
-        // }
-
-        // led_animation.data = &led_solid_color_b;
-
-        // if (!WS2812B_API_BuildAnimation(&led_animation)) {
-        //     TRACE_ERR("WS2812B API Build failed\n");
-        // }
-
-        // if (!WS2812B_API_Start(eWs2812b_1)) {
-        //     TRACE_ERR("WS2812B API Start failed\n");
-        // }
-
-        // if (!WS2812B_API_Reset(eWs2812b_1)) {
-        //     TRACE_ERR("WS2812B API Reset failed\n");
-        // }
-
-        if (!WS2812B_API_BuildAnimation(&led_animation)) {
-            TRACE_ERR("WS2812B API Build failed\n");
-        }
-
-        if (!WS2812B_API_BuildAnimation(&led_animation_2)) {
-            TRACE_ERR("WS2812B API Build failed\n");
-        }
-
-        if (!WS2812B_API_Start(eWs2812b_1)) {
-            TRACE_ERR("WS2812B API Start failed\n");
-        }
-
-        osDelay(1000);
-
-        if (!WS2812B_API_Reset(eWs2812b_1)) {
-            TRACE_ERR("WS2812B API Reset failed\n");
-        }
-
-        osDelay(1000);
-
-        osThreadYield();
     }
 }

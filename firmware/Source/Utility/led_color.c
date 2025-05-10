@@ -224,3 +224,15 @@ void LED_RgbToHsv(const sLedColorRgb_t rgb, sLedColorHsv_t *hsv) {
 
     return;
 }
+
+uint8_t LED_ScaleBrightness (const uint8_t value, const uint8_t brightness) {
+    if (brightness == 0) {
+        return 0;
+    }
+
+    if (brightness > MAX_BRIGHTNESS) {
+        return value;
+    }
+
+    return (value * brightness) / MAX_BRIGHTNESS;
+}

@@ -9,8 +9,6 @@
  * Private definitions and macros
  *********************************************************************************************************************/
 
-#define MAX_BRIGHTNESS 255
-
 /**********************************************************************************************************************
  * Private typedef
  *********************************************************************************************************************/
@@ -31,13 +29,13 @@
  * Prototypes of private functions
  *********************************************************************************************************************/
  
-void Animation_SolidColor_FillBuffer (const sSolidAnimationData_t *data);
+void Animation_SolidColor_FillBuffer (sSolidAnimationData_t *data);
 
 /**********************************************************************************************************************
  * Definitions of private functions
  *********************************************************************************************************************/
 
-void Animation_SolidColor_FillBuffer (const sSolidAnimationData_t *data) {
+void Animation_SolidColor_FillBuffer (sSolidAnimationData_t *data) {
     if (data == NULL) {
         return;
     }
@@ -54,9 +52,11 @@ void Animation_SolidColor_FillBuffer (const sSolidAnimationData_t *data) {
     uint8_t g = (data->rgb.color >> 8) & 0xFF;
     uint8_t b = data->rgb.color & 0xFF;
 
-    r = (r * data->brightness) / MAX_BRIGHTNESS;
-    g = (g * data->brightness) / MAX_BRIGHTNESS;
-    b = (b * data->brightness) / MAX_BRIGHTNESS;
+    LED_ScaleBrightness(r, data->brightness);
+
+    r = LED_ScaleBrightness(r, data->brightness);
+    g = LED_ScaleBrightness(g, data->brightness);
+    b = LED_ScaleBrightness(b, data->brightness);
 
     WS2812B_API_FillColor(data->device, r, g, b);
 
@@ -67,6 +67,12 @@ void Animation_SolidColor_FillBuffer (const sSolidAnimationData_t *data) {
  * Definitions of exported functions
  *********************************************************************************************************************/
 
-void Animation_SolidColor_Run (const void *context) {
+void Animation_SolidColor_Run (void *context) {
+    if (context == NULL) {
+        return;
+    }
+    
     Animation_SolidColor_FillBuffer((sSolidAnimationData_t*) context);
+
+    return;
 }

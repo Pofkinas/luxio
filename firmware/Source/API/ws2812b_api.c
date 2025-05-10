@@ -13,6 +13,7 @@
 
 #include "animation_solidcolor.h"
 #include "animation_segmentfill.h"
+#include "animation_rainbow.h"
 
 /**********************************************************************************************************************
  * Private definitions and macros
@@ -54,6 +55,7 @@ typedef struct sWs2812bSequence {
 } sWs2812bSequence_t;
 
 typedef struct sWs2812bDynamicDesc {
+    eWs2812b_t device;
     uint8_t *led_data;
     size_t led_count;
     eWs2812bState_t led_state;
@@ -65,10 +67,6 @@ typedef struct sWs2812bDynamicDesc {
     void (*timer_callback) (void *arg);
     eLedTransferState_t transfer_status;
 } sWs2812bApiDynamicDesc_t;
-
-typedef struct sWs2812bTimerArg {
-    eWs2812b_t device;
-} sWs2812bTimerArg_t;
 
 /**********************************************************************************************************************
  * Private constants
@@ -113,12 +111,6 @@ static sWs2812bApiDynamicDesc_t g_ws2812b_api_dynamic_lut[eWs2812b_Last] = {
         .transfer_status = eLedTransferState_Start
     }
 };
-
-static sWs2812bTimerArg_t g_ws2812b_api_timer_arg[eWs2812b_Last] = {
-    [eWs2812b_1] = {
-        .device = eWs2812b_1,
-    }
-};
 /* clang-format on */
 
 /**********************************************************************************************************************
@@ -131,9 +123,9 @@ static sWs2812bTimerArg_t g_ws2812b_api_timer_arg[eWs2812b_Last] = {
  
 static void WS2812B_API_TimerCallback (void *arg);
 static bool WS2812B_API_Update (const eWs2812b_t device);
-static void WS2812B_API_DriverCallback (const eWs2812bDriver_t device, const eLedTransferState_t transfer_state);
+static void WS2812B_API_DriverCallback (void *context, const eLedTransferState_t transfer_state);
 static bool WS2812B_API_BuildStaticAnimation (sLedAnimationDesc_t *static_animation_data);
-static void WS2812B_API_CastToRgb (const eColorFormat_t color_format, sLedColorRgb_t *rgb, const sLedColorHsv_t hsv);
+static bool WS2812B_API_QueueDynamicAnimation (sLedAnimationDesc_t *dynamic_animation_data);
 
 /**********************************************************************************************************************
  * Definitions of private functions
@@ -144,35 +136,41 @@ static void WS2812B_API_TimerCallback (void *arg) {
         return;
     }
 
-    sWs2812bTimerArg_t *timer_arg = (sWs2812bTimerArg_t *) arg;
+    sWs2812bApiDynamicDesc_t *timer_arg = (sWs2812bApiDynamicDesc_t *) arg;
 
     if (!WS2812B_API_IsCorrectDevice(timer_arg->device)) {
         return;
     }
 
-    g_ws2812b_api_dynamic_lut[timer_arg->device].current_animation = g_ws2812b_api_dynamic_lut[timer_arg->device].dynamic_animations;
+    timer_arg->current_animation = timer_arg->dynamic_animations;
 
-    while (g_ws2812b_api_dynamic_lut[timer_arg->device].current_animation->next != NULL) {
-        switch (g_ws2812b_api_dynamic_lut[timer_arg->device].current_animation->animation) {
-            case eLedAnimation_Blink: {
-                // Update blink animation
-            } break;
+    sLedAnimationInstance_t animation_instance = {0};
+
+    while (timer_arg->current_animation->next != NULL) {
+        switch (timer_arg->current_animation->animation) {
             case eLedAnimation_Rainbow: {
-                // Update rainbow animation
+                animation_instance.context = timer_arg->current_animation->data;
+                animation_instance.build_animation = Animation_Rainbow_Run;
             } break;
             default: {
-                break;
+                timer_arg->led_state = eWs2812bState_Idle;
+
+                osTimerStop(timer_arg->timer);
+                
+                return;
             }
         }
+        
+        animation_instance.build_animation(animation_instance.context);
 
-        g_ws2812b_api_dynamic_lut[timer_arg->device].current_animation = g_ws2812b_api_dynamic_lut[timer_arg->device].current_animation->next;
+        timer_arg->current_animation = timer_arg->current_animation->next;
     }
 
     if (!WS2812B_API_Update(timer_arg->device)) {
         
-        g_ws2812b_api_dynamic_lut[timer_arg->device].led_state = eWs2812bState_Idle;
+        timer_arg->led_state = eWs2812bState_Idle;
 
-        osTimerStop(g_ws2812b_api_dynamic_lut[timer_arg->device].timer);
+        osTimerStop(timer_arg->timer);
     }
 
     return;
@@ -222,16 +220,15 @@ static bool WS2812B_API_Update (const eWs2812b_t device) {
     return true;
 }
 
-static void WS2812B_API_DriverCallback (const eWs2812bDriver_t callback_device, const eLedTransferState_t transfer_state) {
-    for (eWs2812b_t device = eWs2812b_First; device < eWs2812b_Last; device++) {
-        if (g_ws2812b_api_static_lut[device].device == callback_device) {
-            g_ws2812b_api_dynamic_lut[device].transfer_status = transfer_state;
-            
-            osEventFlagsSet(g_ws2812b_api_dynamic_lut[device].flag, CALLBACK_FLAG);
-            
-            return;
-        }
+static void WS2812B_API_DriverCallback (void *context, const eLedTransferState_t transfer_state) {
+    if (context == NULL) {
+        return;
     }
+    
+    sWs2812bApiDynamicDesc_t *api = (sWs2812bApiDynamicDesc_t*) context;
+
+    api->transfer_status = transfer_state;
+    osEventFlagsSet(api->flag, CALLBACK_FLAG);
 
     return;
 }
@@ -256,16 +253,15 @@ static bool WS2812B_API_BuildStaticAnimation (sLedAnimationDesc_t *static_animat
     switch (static_animation_data->animation) {
         case eLedAnimation_SolidColor: {
             sLedAnimationSolidColor_t *data = static_animation_data->data;
-            WS2812B_API_CastToRgb(data->color_format, &data->rgb, data->hsv);
 
-            sSolidAnimationData_t solid_ctx = {
+            sSolidAnimationData_t solid_context = {
                 .device = static_animation_data->device,
                 .brightness = static_animation_data->brightness,
                 .rgb = data->rgb
             };
         
             sLedAnimationInstance_t animation_instance = {
-                .context = &solid_ctx,
+                .context = &solid_context,
                 .build_animation = Animation_SolidColor_Run
             };
         
@@ -273,10 +269,8 @@ static bool WS2812B_API_BuildStaticAnimation (sLedAnimationDesc_t *static_animat
         } break;
         case eLedAnimation_SegmentFill: {
             sLedAnimationSegmentFill_t *data = static_animation_data->data;
-            WS2812B_API_CastToRgb(data->color_format, &data->rgb_base, data->hsv_base);
-            WS2812B_API_CastToRgb(data->color_format, &data->rgb_segment, data->hsv_segment);
 
-            sSegmentFillData_t segment_ctx = {
+            sSegmentFillData_t segment_context = {
                 .device = static_animation_data->device,
                 .brightness = static_animation_data->brightness,
                 .base_rgb = data->rgb_base,
@@ -286,7 +280,7 @@ static bool WS2812B_API_BuildStaticAnimation (sLedAnimationDesc_t *static_animat
             };
 
             sLedAnimationInstance_t animation_instance = {
-                .context = &segment_ctx,
+                .context = &segment_context,
                 .build_animation = Animation_SegmentFill_Run
             };
 
@@ -297,33 +291,87 @@ static bool WS2812B_API_BuildStaticAnimation (sLedAnimationDesc_t *static_animat
         } break;
     }
 
-    if (osMutexAcquire(g_ws2812b_api_dynamic_lut[static_animation_data->device].mutex, MUTEX_TIMEOUT) != osOK) {
-        return false;
-    }
-
-    g_ws2812b_api_dynamic_lut[static_animation_data->device].led_state = eWs2812bState_Idle;
-
-    osMutexRelease(g_ws2812b_api_dynamic_lut[static_animation_data->device].mutex);
-
     return true;
 }
 
-static void WS2812B_API_CastToRgb (const eColorFormat_t color_format, sLedColorRgb_t *rgb, const sLedColorHsv_t hsv) {
-    if (rgb == NULL) {
-        return;
+static bool WS2812B_API_QueueDynamicAnimation (sLedAnimationDesc_t *dynamic_animation_data) {
+    if (dynamic_animation_data == NULL) {
+        return false;
     }
-    
-    switch (color_format) {
-        case eColorFormat_RGB: {
-        } break;
-        case eColorFormat_HSV: {
-            LED_HsvToRgb(hsv, rgb);
+
+    if (!WS2812B_API_IsCorrectDevice(dynamic_animation_data->device)) {
+        return false;
+    }
+
+    if ((dynamic_animation_data->animation < eLedAnimation_First) || (dynamic_animation_data->animation >= eLedAnimation_Last)) {
+        return false;
+    }
+
+    if (dynamic_animation_data->data == NULL) {
+        return false;
+    }
+
+    void *new_sequence_instance = NULL;
+
+    switch (dynamic_animation_data->animation) {
+        case eLedAnimation_Rainbow: {
+            sLedAnimationRainbow_t *data = dynamic_animation_data->data;
+
+            sLedRainbow_t *rainbow_context = Heap_API_Malloc(sizeof(sLedRainbow_t));
+            sLedAnimationRainbow_t *rainbow_data = Heap_API_Malloc(sizeof(sLedAnimationRainbow_t));
+
+            if ((rainbow_context == NULL) || (rainbow_data == NULL)) {
+                TRACE_ERR("Malloc failed\n");
+                
+                return false;
+            }
+
+            rainbow_context->device = dynamic_animation_data->device;
+            rainbow_context->brightness = dynamic_animation_data->brightness;
+            rainbow_context->state = eRainbowState_Init;
+
+            rainbow_data->start_hsv_color = data->start_hsv_color;
+            rainbow_data->end_hsv_color = data->end_hsv_color;
+            rainbow_data->segment_start_led = data->segment_start_led;
+            rainbow_data->segment_end_led = data->segment_end_led;
+            rainbow_data->speed = data->speed;
+
+            rainbow_context->animation_data = rainbow_data;
+
+            sLedAnimationInstance_t animation_instance = {
+                .context = &rainbow_context,
+                .build_animation = Animation_Rainbow_Run
+            };
+
+            animation_instance.build_animation(animation_instance.context);\
+
+            new_sequence_instance = rainbow_context;
         } break;
         default: {
+            return false;
         } break;
     }
 
-    return;
+    sWs2812bSequence_t *new_animation = Heap_API_Malloc(sizeof(sWs2812bSequence_t));
+    
+    if (new_animation == NULL) {
+        TRACE_ERR("Malloc failed\n");
+        
+        return false;
+    }
+
+    new_animation->animation = dynamic_animation_data->animation;
+    new_animation->data = new_sequence_instance;
+    new_animation->next = NULL;
+
+    if (g_ws2812b_api_dynamic_lut[dynamic_animation_data->device].current_animation != NULL) {
+        new_animation->next = g_ws2812b_api_dynamic_lut[dynamic_animation_data->device].current_animation;
+    } 
+
+    g_ws2812b_api_dynamic_lut[dynamic_animation_data->device].dynamic_animations = new_animation;
+    g_ws2812b_api_dynamic_lut[dynamic_animation_data->device].current_animation = new_animation;
+
+    return true;
 }
 
 /**********************************************************************************************************************
@@ -350,7 +398,7 @@ bool WS2812B_API_Init (void) {
     g_ws2812b_api_is_init = true;
 
     for (eWs2812b_t device = eWs2812b_First; device < eWs2812b_Last; device++) {
-        if (!WS2812B_Driver_Init(g_ws2812b_api_static_lut[device].device, &WS2812B_API_DriverCallback)) {
+        if (!WS2812B_Driver_Init(g_ws2812b_api_static_lut[device].device, &WS2812B_API_DriverCallback, &g_ws2812b_api_dynamic_lut[device])) {
 
             g_ws2812b_api_is_init = false;
         }
@@ -362,7 +410,7 @@ bool WS2812B_API_Init (void) {
         }
 
         if (g_ws2812b_api_dynamic_lut[device].timer == NULL) {
-            g_ws2812b_api_dynamic_lut[device].timer = osTimerNew(WS2812B_API_TimerCallback, osTimerPeriodic, &g_ws2812b_api_timer_arg[device], &g_ws2812b_api_static_lut[device].timer_attributes);
+            g_ws2812b_api_dynamic_lut[device].timer = osTimerNew(WS2812B_API_TimerCallback, osTimerPeriodic, &g_ws2812b_api_dynamic_lut[device], &g_ws2812b_api_static_lut[device].timer_attributes);
         }
 
         if (g_ws2812b_api_dynamic_lut[device].mutex == NULL) {
@@ -372,12 +420,14 @@ bool WS2812B_API_Init (void) {
         if (g_ws2812b_api_dynamic_lut[device].flag == NULL) {
             g_ws2812b_api_dynamic_lut[device].flag = osEventFlagsNew(&g_ws2812b_api_static_lut[device].flag_attributes);
         }
+
+        g_ws2812b_api_dynamic_lut[device].device = device;
     }
 
     return g_ws2812b_api_is_init;
 }
 
-bool WS2812B_API_BuildAnimation (sLedAnimationDesc_t *animation_data) {
+bool WS2812B_API_AddAnimation (sLedAnimationDesc_t *animation_data) {
     if (animation_data == NULL) {
         TRACE_ERR("No animation data\n");
         
@@ -410,44 +460,46 @@ bool WS2812B_API_BuildAnimation (sLedAnimationDesc_t *animation_data) {
 
     osMutexRelease(g_ws2812b_api_dynamic_lut[animation_data->device].mutex);
 
+    bool is_execute_successful = false;
+
     switch (animation_data->animation) {
         case eLedAnimation_SolidColor: {
-            return WS2812B_API_BuildStaticAnimation(animation_data);
-        }
+            if (!WS2812B_API_BuildStaticAnimation(animation_data)) {
+                TRACE_ERR("Build static animation [%d] failed\n", animation_data->animation);
+                
+                is_execute_successful = false;
+            }
+        } break;
         case eLedAnimation_SegmentFill: {
-            return WS2812B_API_BuildStaticAnimation(animation_data);
-        } 
-        case eLedAnimation_Blink: {
-
+            if (!WS2812B_API_BuildStaticAnimation(animation_data)) {
+                TRACE_ERR("Build static animation [%d] failed\n", animation_data->animation);
+                
+                is_execute_successful = false;
+            }
         } break;
         case eLedAnimation_Rainbow: {
+            if (!WS2812B_API_QueueDynamicAnimation(animation_data)) {
+                TRACE_ERR("Build static animation [%d] failed\n", animation_data->animation);
 
+                is_execute_successful = false;
+            }
         } break; 
         default: {
+            TRACE_ERR("Animation not supported [%d]\n", animation_data->animation);
+
+            is_execute_successful = false;
         } break;       
     }
 
-    sWs2812bSequence_t *new_animation = Heap_API_Malloc(sizeof(sWs2812bSequence_t));
-    
-    if (new_animation == NULL) {
-        TRACE_ERR("Malloc failed\n");
-        
-        return false;
+    if (osMutexAcquire(g_ws2812b_api_dynamic_lut[animation_data->device].mutex, MUTEX_TIMEOUT) != osOK) {
+        is_execute_successful = false;
     }
 
-    new_animation->animation = animation_data->animation;
-    new_animation->brightness = animation_data->brightness;
-    new_animation->data = animation_data->data;
-    new_animation->next = NULL;
+    g_ws2812b_api_dynamic_lut[animation_data->device].led_state = eWs2812bState_Idle;
 
-    if (g_ws2812b_api_dynamic_lut[animation_data->device].current_animation != NULL) {
-        new_animation->next = g_ws2812b_api_dynamic_lut[animation_data->device].current_animation;
-    } 
+    osMutexRelease(g_ws2812b_api_dynamic_lut[animation_data->device].mutex);
 
-    g_ws2812b_api_dynamic_lut[animation_data->device].dynamic_animations = new_animation;
-    g_ws2812b_api_dynamic_lut[animation_data->device].current_animation = new_animation;
-
-    return false;
+    return is_execute_successful;
 }
 
 bool WS2812B_API_ClearAnimations (const eWs2812b_t device) {
@@ -549,8 +601,6 @@ bool WS2812B_API_Start (const eWs2812b_t device) {
     osTimerStart(g_ws2812b_api_dynamic_lut[device].timer, REFRESH_RATE);
 
     osMutexRelease(g_ws2812b_api_dynamic_lut[device].mutex);
-
-    // Do i need to wait for fist timer callback flag? (in case of only static data i would know when to update)
 
     return true;
 }

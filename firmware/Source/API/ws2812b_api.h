@@ -13,6 +13,8 @@
  * Exported definitions and macros
  *********************************************************************************************************************/
 
+#define MAX_BRIGHTNESS 255
+
 /**********************************************************************************************************************
  * Exported types
  *********************************************************************************************************************/
@@ -28,17 +30,9 @@ typedef enum eLedAnimation {
     eLedAnimation_First = 0,
     eLedAnimation_SolidColor = eLedAnimation_First,
     eLedAnimation_SegmentFill,
-    eLedAnimation_Blink,
     eLedAnimation_Rainbow,
     eLedAnimation_Last
 } eLedAnimation_t;
-
-typedef enum eColorFormat {
-    eColorFormat_First = 0,
-    eColorFormat_RGB = eColorFormat_First,
-    eColorFormat_HSV,
-    eColorFormat_Last
-} eColorFormat_t;
 
 typedef struct sLedAnimationDesc {
     eWs2812b_t device;
@@ -49,24 +43,27 @@ typedef struct sLedAnimationDesc {
 
 typedef struct sLedAnimationInstance {
     void *context;
-    void (*build_animation)(const void *context);
+    void (*build_animation)(void *context);
 } sLedAnimationInstance_t;
 
 typedef struct sLedAnimationSolidColor {
-    eColorFormat_t color_format;
     sLedColorRgb_t rgb;
-    sLedColorHsv_t hsv;
 } sLedAnimationSolidColor_t;
 
 typedef struct sLedAnimationSegmentFill {
-    eColorFormat_t color_format;
     sLedColorRgb_t rgb_base;
-    sLedColorHsv_t hsv_base;
     sLedColorRgb_t rgb_segment;
-    sLedColorHsv_t hsv_segment;
     size_t segment_start_led;
     size_t segment_end_led;
 } sLedAnimationSegmentFill_t;
+
+typedef struct sLedAnimationRainbow {
+    sLedColorHsv_t start_hsv_color;
+    sLedColorHsv_t end_hsv_color;
+    size_t segment_start_led;
+    size_t segment_end_led;
+    uint8_t speed;
+} sLedAnimationRainbow_t;
 /* clang-format on */
 
 /**********************************************************************************************************************
@@ -78,7 +75,7 @@ typedef struct sLedAnimationSegmentFill {
  *********************************************************************************************************************/
 
 bool WS2812B_API_Init (void);
-bool WS2812B_API_BuildAnimation (sLedAnimationDesc_t *animation_data);
+bool WS2812B_API_AddAnimation (sLedAnimationDesc_t *animation_data);
 bool WS2812B_API_ClearAnimations (const eWs2812b_t device);
 bool WS2812B_API_Start (const eWs2812b_t device);
 bool WS2812B_API_Stop (const eWs2812b_t device);
