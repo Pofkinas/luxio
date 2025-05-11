@@ -29,10 +29,10 @@ typedef struct sLedRainbow {
     eWs2812b_t device;
     uint8_t brightness;
     eRainbowState_t state;
-    sLedAnimationRainbow_t *animation_data;
-    uint8_t hue_range;
-    uint8_t hue_step;
-    uint8_t base_hue;
+    sLedAnimationRainbow_t *parameters;
+    
+    size_t frame_counter;
+    uint8_t hue_offset;
 } sLedRainbow_t;
 /* clang-format on */
 
@@ -45,5 +45,6 @@ typedef struct sLedRainbow {
  *********************************************************************************************************************/
 
 void Animation_Rainbow_Run (void *context);
+bool Animation_Rainbow_IsCorrectSpeed (const uint8_t speed);
 
 #endif /* SOURCE_UTILITY_LED_ANIMATION_ANIMATION_RAINBOW_H_ */

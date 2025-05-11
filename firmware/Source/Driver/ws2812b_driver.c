@@ -308,6 +308,7 @@ bool WS2812B_Driver_Init (const eWs2812bDriver_t device, led_driver_callback_t c
         .mem_or_dest_addr = g_dynamic_ws2812b_lut[device].dma_buffer,
         .data_buffer_size = WS2812B_DMA_BUFFER_SIZE,
         .isr_callback = &WS2812B_Driver_Dma_ISRHandler,
+        .isr_callback_context = &g_dynamic_ws2812b_lut[device]
     };
         
     if (!DMA_Driver_Init(&dma_init_struct)) {

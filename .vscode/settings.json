@@ -8,6 +8,8 @@
         "debug_api.h": "c",
         "vl53l0xv2_api.h": "c",
         "stddef.h": "c",
-        "animation_rainbow.h": "c"
+        "animation_rainbow.h": "c",
+        "led_color.h": "c",
+        "timer_driver.h": "c"
     }
 }

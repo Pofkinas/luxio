@@ -34,6 +34,13 @@ typedef enum eLedAnimation {
     eLedAnimation_Last
 } eLedAnimation_t;
 
+typedef enum eDirection {
+    eDirection_First = 0,
+    eDirection_Up = eDirection_First,
+    eDirection_Down,
+    eDirection_Last
+} eDirection_t;
+
 typedef struct sLedAnimationDesc {
     eWs2812b_t device;
     eLedAnimation_t animation;
@@ -58,11 +65,13 @@ typedef struct sLedAnimationSegmentFill {
 } sLedAnimationSegmentFill_t;
 
 typedef struct sLedAnimationRainbow {
+    eDirection_t direction;
     sLedColorHsv_t start_hsv_color;
-    sLedColorHsv_t end_hsv_color;
     size_t segment_start_led;
     size_t segment_end_led;
     uint8_t speed;
+    uint8_t hue_step;
+    size_t frames_per_update;
 } sLedAnimationRainbow_t;
 /* clang-format on */
 

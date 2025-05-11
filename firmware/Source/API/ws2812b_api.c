@@ -24,8 +24,8 @@
 #define MUTEX_TIMEOUT 0U
 #define REFRESH_RATE 33U // 30 FPS
 
-#define CALLBACK_TIMEOUT 20U
-#define CALLBACK_FLAG 0x01U
+#define DEFAULT_FLAG_TIMEOUT 50U
+#define TRANSFER_SUCCESSFUL_FLAG 0x01U
 
 /**********************************************************************************************************************
  * Private typedef
@@ -36,6 +36,7 @@ typedef enum eWs2812bState {
     eWs2812bState_Idle = eWs2812bState_First,
     eWs2812bState_Building,
     eWs2812bState_Running,
+    eWs2812bState_Updating,
     eWs2812bState_Last
 } eWs2812bState_t;
 
@@ -49,7 +50,6 @@ typedef struct sWs2812bControlDesc {
 
 typedef struct sWs2812bSequence {
     eLedAnimation_t animation;
-    uint8_t brightness;
     void *data;
     struct sWs2812bSequence *next;
 } sWs2812bSequence_t;
@@ -63,9 +63,7 @@ typedef struct sWs2812bDynamicDesc {
     sWs2812bSequence_t *current_animation;
     osTimerId_t timer;
     osMutexId_t mutex;
-    osEventFlagsId_t flag; 
-    void (*timer_callback) (void *arg);
-    eLedTransferState_t transfer_status;
+    osEventFlagsId_t flag;
 } sWs2812bApiDynamicDesc_t;
 
 /**********************************************************************************************************************
@@ -106,9 +104,7 @@ static sWs2812bApiDynamicDesc_t g_ws2812b_api_dynamic_lut[eWs2812b_Last] = {
         .current_animation = NULL,
         .timer = NULL,
         .mutex = NULL,
-        .flag = NULL,
-        .timer_callback = NULL,
-        .transfer_status = eLedTransferState_Start
+        .flag = NULL
     }
 };
 /* clang-format on */
@@ -142,11 +138,15 @@ static void WS2812B_API_TimerCallback (void *arg) {
         return;
     }
 
+    if (timer_arg->led_state != eWs2812bState_Running) {
+        return;
+    }
+
     timer_arg->current_animation = timer_arg->dynamic_animations;
 
     sLedAnimationInstance_t animation_instance = {0};
 
-    while (timer_arg->current_animation->next != NULL) {
+    while (timer_arg->current_animation != NULL) {
         switch (timer_arg->current_animation->animation) {
             case eLedAnimation_Rainbow: {
                 animation_instance.context = timer_arg->current_animation->data;
@@ -191,31 +191,11 @@ static bool WS2812B_API_Update (const eWs2812b_t device) {
 
     // TODO: Rework this g_ws2812b_api_dynamic_lut[device].led_count logic. Its mainly for optimization.
 
-    // if (g_ws2812b_api_dynamic_lut[device].led_count > g_ws2812b_api_static_lut[device].max_led) {
-    //     g_ws2812b_api_dynamic_lut[device].led_count = g_ws2812b_api_static_lut[device].max_led;
-    // }
-
-    // if (!WS2812B_Driver_Set(g_ws2812b_api_static_lut[device].device, g_ws2812b_api_dynamic_lut[device].led_data, g_ws2812b_api_dynamic_lut[device].led_count)) {
-    //     is_execute_successful = false;
-    // }
-
-    // for (int i = 0; i < 30; i += 3) {
-    //     TRACE_INFO("LED %d: R:%02X G:%02X B:%02X\n", i/3, g_ws2812b_api_dynamic_lut[device].led_data[i], g_ws2812b_api_dynamic_lut[device].led_data[i+1], g_ws2812b_api_dynamic_lut[device].led_data[i+2]);
-    // }
+    g_ws2812b_api_dynamic_lut[device].led_state = eWs2812bState_Updating;
 
     if (!WS2812B_Driver_Set(g_ws2812b_api_static_lut[device].device, g_ws2812b_api_dynamic_lut[device].led_data, g_ws2812b_api_static_lut[device].max_led)) {
         return false;
     }
-
-    if (osEventFlagsWait(g_ws2812b_api_dynamic_lut[device].flag, CALLBACK_FLAG, osFlagsWaitAny, CALLBACK_TIMEOUT) != CALLBACK_FLAG) {
-        return false;
-    }
-
-    if (g_ws2812b_api_dynamic_lut[device].transfer_status != eLedTransferState_Complete) {
-        return false;
-    }
-
-    //g_ws2812b_api_dynamic_lut[device].led_count = 0;
 
     return true;
 }
@@ -225,10 +205,21 @@ static void WS2812B_API_DriverCallback (void *context, const eLedTransferState_t
         return;
     }
     
-    sWs2812bApiDynamicDesc_t *api = (sWs2812bApiDynamicDesc_t*) context;
+    sWs2812bApiDynamicDesc_t *callback_arg = (sWs2812bApiDynamicDesc_t*) context;
 
-    api->transfer_status = transfer_state;
-    osEventFlagsSet(api->flag, CALLBACK_FLAG);
+    if (transfer_state != eLedTransferState_Complete) {
+        if (!osTimerIsRunning(callback_arg->timer)) {
+            osTimerStop(callback_arg->timer);
+        }
+
+        callback_arg->led_state = eWs2812bState_Idle;
+        
+        return;
+    }
+
+    callback_arg->led_state = eWs2812bState_Running;
+
+    osEventFlagsSet(callback_arg->flag, TRANSFER_SUCCESSFUL_FLAG);
 
     return;
 }
@@ -330,20 +321,22 @@ static bool WS2812B_API_QueueDynamicAnimation (sLedAnimationDesc_t *dynamic_anim
             rainbow_context->brightness = dynamic_animation_data->brightness;
             rainbow_context->state = eRainbowState_Init;
 
+            rainbow_data->direction = data->direction;
             rainbow_data->start_hsv_color = data->start_hsv_color;
-            rainbow_data->end_hsv_color = data->end_hsv_color;
             rainbow_data->segment_start_led = data->segment_start_led;
             rainbow_data->segment_end_led = data->segment_end_led;
             rainbow_data->speed = data->speed;
+            rainbow_data->hue_step = data->hue_step;
+            rainbow_data->frames_per_update = data->frames_per_update;
 
-            rainbow_context->animation_data = rainbow_data;
+            rainbow_context->parameters = rainbow_data;
 
             sLedAnimationInstance_t animation_instance = {
-                .context = &rainbow_context,
+                .context = rainbow_context,
                 .build_animation = Animation_Rainbow_Run
             };
 
-            animation_instance.build_animation(animation_instance.context);\
+            animation_instance.build_animation(animation_instance.context);
 
             new_sequence_instance = rainbow_context;
         } break;
@@ -447,7 +440,7 @@ bool WS2812B_API_AddAnimation (sLedAnimationDesc_t *animation_data) {
     }
 
     if (g_ws2812b_api_dynamic_lut[animation_data->device].led_state != eWs2812bState_Idle) {
-        TRACE_ERR("Device state %d\n", g_ws2812b_api_dynamic_lut[animation_data->device].led_state);
+        TRACE_ERR("Device state not idle: [%d]\n", g_ws2812b_api_dynamic_lut[animation_data->device].led_state);
         
         return false;
     }
@@ -460,7 +453,7 @@ bool WS2812B_API_AddAnimation (sLedAnimationDesc_t *animation_data) {
 
     osMutexRelease(g_ws2812b_api_dynamic_lut[animation_data->device].mutex);
 
-    bool is_execute_successful = false;
+    bool is_execute_successful = true;
 
     switch (animation_data->animation) {
         case eLedAnimation_SolidColor: {
@@ -516,9 +509,8 @@ bool WS2812B_API_ClearAnimations (const eWs2812b_t device) {
     }
 
     if (g_ws2812b_api_dynamic_lut[device].led_state != eWs2812bState_Idle) {
-        TRACE_ERR("Device state %d\n", g_ws2812b_api_dynamic_lut[device].led_state);
+        TRACE_ERR("Device state not idle: [%d]\n", g_ws2812b_api_dynamic_lut[device].led_state);
 
-        
         return false;
     }
 
@@ -530,7 +522,7 @@ bool WS2812B_API_ClearAnimations (const eWs2812b_t device) {
         return false;
     }
 
-    while (g_ws2812b_api_dynamic_lut[device].dynamic_animations->next != NULL) {
+    while (g_ws2812b_api_dynamic_lut[device].dynamic_animations != NULL) {
         if (!Heap_API_Free(g_ws2812b_api_dynamic_lut[device].dynamic_animations->data)) {
             TRACE_ERR("Heap API failed\n");
             
@@ -571,7 +563,7 @@ bool WS2812B_API_Start (const eWs2812b_t device) {
     }
 
     if (g_ws2812b_api_dynamic_lut[device].led_state != eWs2812bState_Idle) {
-        TRACE_ERR("Device state %d\n", g_ws2812b_api_dynamic_lut[device].led_state);
+        TRACE_ERR("Device state not idle: [%d]\n", g_ws2812b_api_dynamic_lut[device].led_state);
 
         return false;
     }
@@ -587,6 +579,16 @@ bool WS2812B_API_Start (const eWs2812b_t device) {
         
         osMutexRelease(g_ws2812b_api_dynamic_lut[device].mutex);
         
+        return false;
+    }
+
+    if (osEventFlagsWait(g_ws2812b_api_dynamic_lut[device].flag, TRANSFER_SUCCESSFUL_FLAG, osFlagsWaitAny, DEFAULT_FLAG_TIMEOUT) != TRANSFER_SUCCESSFUL_FLAG) {
+        TRACE_ERR("Failed to receive 'Transfer successful' flag\n");
+
+        g_ws2812b_api_dynamic_lut[device].led_state = eWs2812bState_Idle;
+
+        osMutexRelease(g_ws2812b_api_dynamic_lut[device].mutex);
+
         return false;
     }
 
@@ -618,10 +620,8 @@ bool WS2812B_API_Stop (const eWs2812b_t device) {
         return false;
     }
 
-    if (g_ws2812b_api_dynamic_lut[device].led_state != eWs2812bState_Idle) {
-        TRACE_ERR("Device state %d\n", g_ws2812b_api_dynamic_lut[device].led_state);
-
-        return false;
+    if (!osTimerIsRunning(g_ws2812b_api_dynamic_lut[device].timer)) {
+        return true;
     }
 
     if (osMutexAcquire(g_ws2812b_api_dynamic_lut[device].mutex, MUTEX_TIMEOUT) != osOK) {
@@ -629,13 +629,18 @@ bool WS2812B_API_Stop (const eWs2812b_t device) {
     }
 
     osTimerStop(g_ws2812b_api_dynamic_lut[device].timer);
-    osEventFlagsClear(g_ws2812b_api_dynamic_lut[device].flag, CALLBACK_FLAG);
 
     g_ws2812b_api_dynamic_lut[device].led_state = eWs2812bState_Idle;
 
     osMutexRelease(g_ws2812b_api_dynamic_lut[device].mutex);
 
-    return WS2812B_Driver_Reset(g_ws2812b_api_static_lut[device].device);
+    if (osEventFlagsWait(g_ws2812b_api_dynamic_lut[device].flag, TRANSFER_SUCCESSFUL_FLAG, osFlagsWaitAny, DEFAULT_FLAG_TIMEOUT) != TRANSFER_SUCCESSFUL_FLAG) {
+        TRACE_ERR("Failed to receive 'Transfer successful' flag\n");
+
+        return false;
+    }
+
+    return true;
 }
 
 bool WS2812B_API_Reset (const eWs2812b_t device) {
@@ -652,7 +657,7 @@ bool WS2812B_API_Reset (const eWs2812b_t device) {
     }
 
     if (g_ws2812b_api_dynamic_lut[device].led_state != eWs2812bState_Idle) {
-        TRACE_ERR("Device state %d\n", g_ws2812b_api_dynamic_lut[device].led_state);
+        TRACE_ERR("Device state not idle: [%d]\n", g_ws2812b_api_dynamic_lut[device].led_state);
 
         return false;
     }
@@ -663,15 +668,9 @@ bool WS2812B_API_Reset (const eWs2812b_t device) {
         return false;
     }
 
-    if (osEventFlagsWait(g_ws2812b_api_dynamic_lut[device].flag, CALLBACK_FLAG, osFlagsWaitAny, CALLBACK_TIMEOUT) != CALLBACK_FLAG) {
-        TRACE_ERR("Failed to receive event flag\n");
+    if (osEventFlagsWait(g_ws2812b_api_dynamic_lut[device].flag, TRANSFER_SUCCESSFUL_FLAG, osFlagsWaitAny, DEFAULT_FLAG_TIMEOUT) != TRANSFER_SUCCESSFUL_FLAG) {
+        TRACE_ERR("Failed to receive 'Transfer successful' flag\n");
 
-        return false;
-    }
-
-    if (g_ws2812b_api_dynamic_lut[device].transfer_status != eLedTransferState_Complete) {
-        TRACE_ERR("Transfer status %d\n", g_ws2812b_api_dynamic_lut[device].transfer_status);
-        
         return false;
     }
 
@@ -680,6 +679,8 @@ bool WS2812B_API_Reset (const eWs2812b_t device) {
     }
 
     memset(g_ws2812b_api_dynamic_lut[device].led_data, 0, g_ws2812b_api_static_lut[device].max_led * LED_DATA_CHANNELS);
+
+    g_ws2812b_api_dynamic_lut[device].led_state = eWs2812bState_Idle;
 
     osMutexRelease(g_ws2812b_api_dynamic_lut[device].mutex);
 
@@ -764,7 +765,7 @@ bool WS2812B_API_FillSegment (const eWs2812b_t device, const size_t start_led, c
 
     size_t led_byte = 0;
 
-    for (size_t led = start_led; led < end_led; led++) {
+    for (size_t led = start_led; led <= end_led; led++) {
         led_byte = led * LED_DATA_CHANNELS;
         g_ws2812b_api_dynamic_lut[device].led_data[led_byte] = r;
         g_ws2812b_api_dynamic_lut[device].led_data[led_byte + 1] = g;
