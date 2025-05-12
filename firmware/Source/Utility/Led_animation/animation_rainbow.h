@@ -45,6 +45,7 @@ typedef struct sLedRainbow {
  *********************************************************************************************************************/
 
 void Animation_Rainbow_Run (void *context);
+void Animation_Rainbow_Free (void *context);
 bool Animation_Rainbow_IsCorrectSpeed (const uint8_t speed);
 
 #endif /* SOURCE_UTILITY_LED_ANIMATION_ANIMATION_RAINBOW_H_ */

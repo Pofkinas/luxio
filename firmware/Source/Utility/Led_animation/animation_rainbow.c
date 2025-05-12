@@ -150,6 +150,22 @@ void Animation_Rainbow_Run (void *context) {
     return;
 }
 
+void Animation_Rainbow_Free (void *context) {
+    if (context == NULL) {
+        return;
+    }
+
+    sLedRainbow_t *rainbow = (sLedRainbow_t*) context;
+
+    if (rainbow->parameters != NULL) {
+        WS2812B_API_FreeData(rainbow->parameters);
+    }
+
+    WS2812B_API_FreeData(rainbow);
+
+    return;
+}
+
 bool Animation_Rainbow_IsCorrectSpeed (const uint8_t speed) {
     return (speed != 0);
 }
