@@ -27,7 +27,6 @@
 #define CALLBACK_FLAG_TIMEOUT 0U
 #define DEFAULT_FLAG_TIMEOUT 50U
 #define TRANSFER_SUCCESS_FLAG 0x01U
-#define TRANSFER_ERROR_FLAG 0x02U
 
 /**********************************************************************************************************************
  * Private typedef
@@ -140,29 +139,12 @@ static void WS2812B_API_TimerCallback (void *arg) {
         return;
     }
 
-    if (osMutexAcquire(timer_arg->mutex, MUTEX_TIMEOUT) != osOK) {
-        return;
-    }
-
     if (timer_arg->led_state != eWs2812bState_Running) {
-        uint32_t flags = osEventFlagsWait(timer_arg->flag, CALLBACK_FLAG_TIMEOUT, osFlagsWaitAny, CALLBACK_FLAG_TIMEOUT);
-
-        if (flags & TRANSFER_ERROR_FLAG) {
-            timer_arg->led_state = eWs2812bState_Idle;
-
-            osTimerStop(timer_arg->timer);
-            osMutexRelease(timer_arg->mutex);
-
+        if (osMutexAcquire(timer_arg->mutex, MUTEX_TIMEOUT) != osOK) {
             return;
         }
-        
-        if (flags & TRANSFER_SUCCESS_FLAG) {
-            timer_arg->led_state = eWs2812bState_Running;
-        } else {
-            osMutexRelease(timer_arg->mutex);
-
-            return;
-        }
+            
+        timer_arg->led_state = eWs2812bState_Running;
     }
 
     timer_arg->current_animation = timer_arg->dynamic_animations;
@@ -233,13 +215,9 @@ static void WS2812B_API_DriverCallback (void *context, const eLedTransferState_t
     
     sWs2812bApiDynamicDesc_t *callback_arg = (sWs2812bApiDynamicDesc_t*) context;
 
-    if (transfer_state != eLedTransferState_Complete) {
-        osEventFlagsSet(callback_arg->flag, TRANSFER_ERROR_FLAG);
-        
-        return;
+    if (transfer_state == eLedTransferState_Complete) { 
+        osEventFlagsSet(callback_arg->flag, TRANSFER_SUCCESS_FLAG);
     }
-
-    osEventFlagsSet(callback_arg->flag, TRANSFER_SUCCESS_FLAG);
 
     return;
 }

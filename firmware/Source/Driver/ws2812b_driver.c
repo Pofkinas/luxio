@@ -4,6 +4,7 @@
 
 #include "ws2812b_driver.h"
 #include <string.h>
+#include <math.h>
 #include "timer_driver.h"
 #include "pwm_driver.h"
 #include "dma_driver.h"
@@ -22,7 +23,7 @@
 #define DATA_TRANSFER_HIGH_TIME (850.0f / SINGLE_DATA_TRANSFER_TIME_NS)
 #define DATA_TRANSFER_LOW_TIME (400.0f / SINGLE_DATA_TRANSFER_TIME_NS)
 
-#define RESET_LED_TRANSFERS 2
+#define LATCH_LED_TRANSFERS 2
 
 /**********************************************************************************************************************
  * Private typedef
@@ -255,7 +256,7 @@ static void WS2812B_Driver_Latch (const eWs2812bDriver_t device) {
     }
 
     g_dynamic_ws2812b_lut[device].sent_led_count = 0;
-    g_dynamic_ws2812b_lut[device].led_to_set = RESET_LED_TRANSFERS;
+    g_dynamic_ws2812b_lut[device].led_to_set = LATCH_LED_TRANSFERS;
 
     DMA_Driver_DisableStream(g_static_ws2812b_lut[device].dma_stream);
     DMA_Driver_ConfigureStream(g_static_ws2812b_lut[device].dma_stream, (uint32_t *) g_ws2812b_latch_data, NULL, WS2812B_DMA_BUFFER_SIZE);
@@ -427,4 +428,22 @@ bool WS2812B_Driver_Reset (const eWs2812bDriver_t device) {
     g_dynamic_ws2812b_lut[device].state = eWs2812bDriverState_Reset;
 
     return true;
+}
+
+uint16_t WS2812B_Driver_GetMinRefreshRate (const eWs2812bDriver_t device) {
+    if ((device < eWs2812bDriver_First) || (device >= eWs2812bDriver_Last)) {
+        return 0;
+    }
+
+    if (!g_dynamic_ws2812b_lut[device].is_init) {
+        return 0;
+    }
+
+    float transfer_time_ms = SINGLE_DATA_TRANSFER_TIME_NS * BITS_PER_LED * (g_static_ws2812b_lut[device].total_led + LATCH_LED_TRANSFERS) / 10000000;
+
+    if (transfer_time_ms < 1.0f) {
+        return 1;
+    } else {
+        return (uint16_t) ceilf(transfer_time_ms);
+    }
 }

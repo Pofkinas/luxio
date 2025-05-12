@@ -48,5 +48,6 @@ typedef void (*led_driver_callback_t) (void *context, const eLedTransferState_t 
 bool WS2812B_Driver_Init (const eWs2812bDriver_t device, led_driver_callback_t callback, void *callback_context);
 bool WS2812B_Driver_Set (const eWs2812bDriver_t device, uint8_t *led_data, size_t led_count);
 bool WS2812B_Driver_Reset (const eWs2812bDriver_t device);
+uint16_t WS2812B_Driver_GetMinRefreshRate (const eWs2812bDriver_t device);
 
 #endif /* SOURCE_DRIVER_WS2812B_DRIVER_H_ */
