@@ -8,12 +8,13 @@
 #include "i2c_api.h"
 #include "debug_api.h"
 #include "gpio_driver.h"
+#include "system_config.h"
 
 /**********************************************************************************************************************
  * Private definitions and macros
  *********************************************************************************************************************/
 
-//#define DEBUG_VL53L0X_API
+#define DEBUG_VL53L0X_API
 
 #define VL53L0X_DEFAULT_ADDRESS 0x29
 #define SYSTEM_TIMER_DIVIDER 1000 // timeout in miliseconds
@@ -83,8 +84,6 @@ static const sVl53l0xStaticDesc_t g_static_vl53l0x_lut[eVl53l0x_Last] = {
  * Private variables
  *********************************************************************************************************************/
 
-static uint32_t g_timeout_multiplier = 0;
-
 /* clang-format off */
 static sVl53l0xDynamicDesc_t g_dynamic_vl53l0x[eVl53l0x_Last] = {
     [eVl53l0x_1] = {
@@ -109,12 +108,17 @@ static sVl53l0xDynamicDesc_t g_dynamic_vl53l0x[eVl53l0x_Last] = {
  *********************************************************************************************************************/
 
 static bool VL53L0X_API_SetRangeProfile (const eVl53l0x_t vl53l0x, const eVl53l0xRangeProfile_t profile);
+static bool VL53L0X_API_IsCorrectDevice (const eVl53l0x_t vl53l0x);
 
 /**********************************************************************************************************************
  * Definitions of private functions
  *********************************************************************************************************************/
  
 static bool VL53L0X_API_SetRangeProfile (const eVl53l0x_t vl53l0x, const eVl53l0xRangeProfile_t profile) {
+    if (!VL53L0X_API_IsCorrectDevice(vl53l0x)) {
+        return false;
+    }
+    
     if ((profile < eVl53l0xRangeProfile_First) || (profile >= eVl53l0xRangeProfile_Last)) {
         return false;
     }
@@ -173,12 +177,16 @@ static bool VL53L0X_API_SetRangeProfile (const eVl53l0x_t vl53l0x, const eVl53l0
     return true;
 }
 
+static bool VL53L0X_API_IsCorrectDevice (const eVl53l0x_t vl53l0x) {
+    return (vl53l0x >= eVl53l0x_First) && (vl53l0x < eVl53l0x_Last);
+}
+
 /**********************************************************************************************************************
  * Definitions of exported functions
  *********************************************************************************************************************/
 
 bool VL53L0X_API_Init (const eVl53l0x_t vl53l0x) {
-    if ((vl53l0x < eVl53l0x_First) || (vl53l0x >= eVl53l0x_Last)) {
+    if (!VL53L0X_API_IsCorrectDevice(vl53l0x)) {
         return false;
     }
 
@@ -198,7 +206,7 @@ bool VL53L0X_API_Init (const eVl53l0x_t vl53l0x) {
         return false;
     }
 
-    osDelay(2);
+    osDelay(1);
 
     if (!GPIO_Driver_WritePin(g_static_vl53l0x_lut[vl53l0x].xshut_pin, true)) {
         return false;
@@ -207,10 +215,14 @@ bool VL53L0X_API_Init (const eVl53l0x_t vl53l0x) {
     osDelay(5);
 
     if (VL53L0X_DataInit(&g_dynamic_vl53l0x[vl53l0x].device) != VL53L0X_ERROR_NONE) {
+        TRACE_ERR("VL53L0X_DataInit failed\n");
+        
         return false;
     }
 
     if (VL53L0X_StaticInit(&g_dynamic_vl53l0x[vl53l0x].device) != VL53L0X_ERROR_NONE) {
+        TRACE_ERR("VL53L0X_StaticInit failed\n");
+
         return false;
     }
 
@@ -222,10 +234,14 @@ bool VL53L0X_API_Init (const eVl53l0x_t vl53l0x) {
 
     if (!g_dynamic_vl53l0x[vl53l0x].is_calib_default_data) {
         if (VL53L0X_PerformRefSpadManagement(&g_dynamic_vl53l0x[vl53l0x].device, &g_dynamic_vl53l0x[vl53l0x].calib_SpadCount, &g_dynamic_vl53l0x[vl53l0x].calib_isApertureSpads) != VL53L0X_ERROR_NONE) {
+            TRACE_ERR("VL53L0X_PerformRefSpadManagement failed\n");
+            
             return false;
         }
 
         if (VL53L0X_PerformRefCalibration(&g_dynamic_vl53l0x[vl53l0x].device, &g_dynamic_vl53l0x[vl53l0x].calib_VhvSettings, &g_dynamic_vl53l0x[vl53l0x].calib_PhaseCal) != VL53L0X_ERROR_NONE) {
+            TRACE_ERR("VL53L0X_PerformRefCalibration failed\n");
+            
             return false;
         }
 
@@ -234,36 +250,48 @@ bool VL53L0X_API_Init (const eVl53l0x_t vl53l0x) {
 
 
     if (VL53L0X_SetReferenceSpads(&g_dynamic_vl53l0x[vl53l0x].device, g_dynamic_vl53l0x[vl53l0x].calib_SpadCount, g_dynamic_vl53l0x[vl53l0x].calib_isApertureSpads) != VL53L0X_ERROR_NONE) {
+        TRACE_ERR("VL53L0X_SetReferenceSpads failed\n");
+        
         return false;
     }
 
     if (VL53L0X_SetRefCalibration(&g_dynamic_vl53l0x[vl53l0x].device, g_dynamic_vl53l0x[vl53l0x].calib_VhvSettings, g_dynamic_vl53l0x[vl53l0x].calib_PhaseCal) != VL53L0X_ERROR_NONE) {
+        TRACE_ERR("VL53L0X_SetRefCalibration failed\n");
+        
         return false;
     }
 
     if (VL53L0X_SetOffsetCalibrationDataMicroMeter(&g_dynamic_vl53l0x[vl53l0x].device, g_static_vl53l0x_lut[vl53l0x].offset) != VL53L0X_ERROR_NONE) {
+        TRACE_ERR("VL53L0X_SetOffsetCalibrationDataMicroMeter failed\n");
+        
         return false;
     }
 
     if (g_static_vl53l0x_lut[vl53l0x].crosstalk_talk_compensation_en) {
         if (VL53L0X_SetXTalkCompensationRateMegaCps(&g_dynamic_vl53l0x[vl53l0x].device, g_static_vl53l0x_lut[vl53l0x].crosstalk_value) != VL53L0X_ERROR_NONE) {
+            TRACE_ERR("VL53L0X_SetXTalkCompensationRateMegaCps failed\n");
+            
             return false;
         }
     
         if (VL53L0X_SetXTalkCompensationEnable(&g_dynamic_vl53l0x[vl53l0x].device, g_static_vl53l0x_lut[vl53l0x].crosstalk_talk_compensation_en) != VL53L0X_ERROR_NONE) {
+            TRACE_ERR("VL53L0X_SetXTalkCompensationEnable failed\n");
+            
             return false;
         }
     }
 
     if (VL53L0X_SetDeviceMode(&g_dynamic_vl53l0x[vl53l0x].device, g_static_vl53l0x_lut[vl53l0x].device_mode) != VL53L0X_ERROR_NONE) {
+        TRACE_ERR("VL53L0X_SetDeviceMode failed\n");
+        
         return false;
     }
 
     if (!VL53L0X_API_SetRangeProfile(vl53l0x, g_static_vl53l0x_lut[vl53l0x].range_profile)) {
+        TRACE_ERR("VL53L0X_API_SetRangeProfile failed\n");
+        
         return false;
     }
-
-    g_timeout_multiplier = osKernelGetSysTimerFreq() / SYSTEM_TIMER_DIVIDER;
 
     g_dynamic_vl53l0x[vl53l0x].is_init = true;
 
@@ -271,7 +299,7 @@ bool VL53L0X_API_Init (const eVl53l0x_t vl53l0x) {
 }
 
 bool VL53L0X_API_Enable (const eVl53l0x_t vl53l0x) {
-    if ((vl53l0x < eVl53l0x_First) || (vl53l0x >= eVl53l0x_Last)) {
+    if (!VL53L0X_API_IsCorrectDevice(vl53l0x)) {
         return false;
     }
 
@@ -295,7 +323,7 @@ bool VL53L0X_API_Enable (const eVl53l0x_t vl53l0x) {
 }
 
 bool VL53L0X_API_Disable (const eVl53l0x_t vl53l0x) {
-    if ((vl53l0x < eVl53l0x_First) || (vl53l0x >= eVl53l0x_Last)) {
+    if (!VL53L0X_API_IsCorrectDevice(vl53l0x)) {
         return false;
     }
 
@@ -345,7 +373,7 @@ bool VL53L0X_API_GetDistance (const eVl53l0x_t vl53l0x, uint16_t *distance, size
     uint32_t ticks = 0;
     VL53L0X_RangingMeasurementData_t ranging_data = {0};
 
-    timeout = timeout * g_timeout_multiplier;
+    timeout = timeout * SYSTEM_MS_TICS;
     ticks = osKernelGetSysTimerCount();
 
     while (VL53L0X_GetMeasurementDataReady(&g_dynamic_vl53l0x[vl53l0x].device, &data_status) != VL53L0X_ERROR_NONE) {
@@ -371,8 +399,6 @@ bool VL53L0X_API_GetDistance (const eVl53l0x_t vl53l0x, uint16_t *distance, size
     }
 
     if (ranging_data.RangeStatus != 0) {
-        TRACE_ERR("Incrored ranging data\n");
-        
         return false;
     }
     

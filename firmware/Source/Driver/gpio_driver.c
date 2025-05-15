@@ -31,21 +31,11 @@ typedef struct sGpioDesc {
 
 /* clang-format off */
 const static sGpioDesc_t g_static_gpio_lut[eGpioPin_Last] = {
-    [eGpioPin_OnboardLed] = {
-        .port = GPIOA,
-        .pin = LL_GPIO_PIN_5,
-        .mode = LL_GPIO_MODE_OUTPUT,
-        .speed = LL_GPIO_SPEED_FREQ_LOW,
-        .pull = LL_GPIO_PULL_NO,
-        .output = LL_GPIO_OUTPUT_PUSHPULL,
-        .clock = LL_AHB1_GRP1_PERIPH_GPIOA,
-        .alternate = LL_GPIO_AF_0
-    },
     [eGpioPin_StartButton] = {
         .port = GPIOC,
         .pin = LL_GPIO_PIN_0,
         .mode = LL_GPIO_MODE_INPUT,
-        .speed = LL_GPIO_SPEED_FREQ_VERY_HIGH,
+        .speed = LL_GPIO_SPEED_FREQ_LOW,
         .pull = LL_GPIO_PULL_NO,
         .output = LL_GPIO_OUTPUT_PUSHPULL,
         .clock = LL_AHB1_GRP1_PERIPH_GPIOC,
@@ -212,16 +202,6 @@ bool GPIO_Driver_TogglePin (const eGpioPin_t gpio_pin) {
     }
 
     LL_GPIO_TogglePin(g_static_gpio_lut[gpio_pin].port, g_static_gpio_lut[gpio_pin].pin);
-
-    return true;
-}
-
-bool GPIO_Driver_SetPinMode (const eGpioPin_t gpio_pin, const uint32_t mode) {
-    if ((gpio_pin < eGpioPin_First) || (gpio_pin >= eGpioPin_Last)) {
-        return false;
-    }
-
-    LL_GPIO_SetPinMode(g_static_gpio_lut[gpio_pin].port, g_static_gpio_lut[gpio_pin].pin, mode);
 
     return true;
 }

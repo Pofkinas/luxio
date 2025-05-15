@@ -5,10 +5,15 @@
  *********************************************************************************************************************/
 
 #include <stdbool.h>
+#include "cmsis_os2.h"
 
 /**********************************************************************************************************************
  * Exported definitions and macros
  *********************************************************************************************************************/
+
+#define BUTTON_DEBOUNCE_PERIOD 30U
+
+#define BUTTON_TRIGGERED_EVENT 0x01U
 
 /**********************************************************************************************************************
  * Exported types
@@ -30,9 +35,7 @@ typedef enum eButton {
  * Prototypes of exported functions
  *********************************************************************************************************************/
 
-bool Button_API_Init (void);
-bool Button_API_IsTriggered (const eButton_t button);
-bool Button_API_ClearState (const eButton_t button);
+bool Button_API_Init (eButton_t button, osEventFlagsId_t event_flags_id);
 bool Button_API_IsCorrectButton (const eButton_t button);
 
 #endif /* SOURCE_API_BUTTON_API_H_ */

@@ -4,7 +4,6 @@
 
 #include "button_api.h"
 #include <stdio.h>
-#include "cmsis_os2.h"
 #include "exti_driver.h"
 #include "gpio_driver.h"
 
@@ -13,34 +12,40 @@
  *********************************************************************************************************************/
 
 #define MESSAGE_QUEUE_PRIORITY 0U
-#define MESSAGE_QUEUE_TIMEOUT 0U
+#define MESSAGE_QUEUE_TIMEOUT 5U
+#define MUTEX_TIMEOUT 0U
 #define BUTTON_MESSAGE_CAPACITY 10
-#define DEBOUNCE_PERIOD 30U
 
 /**********************************************************************************************************************
  * Private typedef
  *********************************************************************************************************************/
 
+typedef enum eButtonState {
+    eButtonState_First = 0,
+    eButtonState_Default = eButtonState_First,
+    eButtonState_Init,
+    eButtonState_Debounce,
+    eButtonState_Last
+} eButtonState_t;
+
 typedef struct sButtonDesc {
-    eButton_t button;
     eGpioPin_t gpio_pin;
     bool active_state;
     bool is_debounce_enable;
+    osMutexAttr_t button_mutex_attributes;
     osTimerAttr_t debouce_timer_attributes;
     bool is_exti;
     eExtiDriver_t exti_device;
 } sButtonDesc_t;
 
 typedef struct sButtonDynamic {
-    osTimerId_t debouce_timer;
-    bool is_tiggered;
-    bool debouce_timer_state;
-    bool button_state;
-} sButtonDynamic_t;
-
-typedef struct sButtonTimerArg {
     eButton_t button;
-} sButtonTimerArg_t;
+    eButtonState_t debounce_state;
+    osMutexId_t button_mutex;
+    osEventFlagsId_t callback_flag;
+    osTimerId_t debouce_timer;
+    bool button_value;
+} sButtonDynamic_t;
 
 /**********************************************************************************************************************
  * Private constants
@@ -64,10 +69,10 @@ const static osMessageQueueAttr_t g_button_message_queue_attributes = {
 /* clang-format off */
 const static sButtonDesc_t g_static_button_desc_lut[eButton_Last] = {
     [eButton_StartStop] = {
-        .button = eButton_StartStop,
         .gpio_pin = eGpioPin_StartButton,
         .active_state = false,
         .is_debounce_enable = true,
+        .button_mutex_attributes = {.name = "Button_StartStop_Mutex", .attr_bits = osMutexRecursive | osMutexPrioInherit, .cb_mem = NULL, .cb_size = 0U},
         .debouce_timer_attributes = {.name = "Button_StartStop_Debounce_Timer", .attr_bits = 0, .cb_mem = NULL, .cb_size = 0},
         .is_exti = true,
         .exti_device = eExtiDriver_StartButton
@@ -79,24 +84,18 @@ const static sButtonDesc_t g_static_button_desc_lut[eButton_Last] = {
  * Private variables
  *********************************************************************************************************************/
 
-static bool g_all_button_init = false;
-
 static osThreadId_t g_button_thread_id = NULL;
 static osMessageQueueId_t g_button_message_queue_id = NULL;
+static bool g_has_pooled_buttons = false;
 
 /* clang-format off */
 static sButtonDynamic_t g_dynamic_button_lut[eButton_Last] = {
     [eButton_StartStop] = {
+        .debounce_state = eButtonState_Default,
+        .button_mutex = NULL,
+        .callback_flag = NULL,
         .debouce_timer = NULL,
-        .is_tiggered = false,
-        .debouce_timer_state = false,
-        .button_state = false
-    }
-};
-
-static sButtonTimerArg_t g_static_button_timer_arg_lut[eButton_Last] = {
-    [eButton_StartStop] = {
-        .button = eButton_StartStop
+        .button_value = false
     }
 };
 /* clang-format on */
@@ -110,92 +109,119 @@ static sButtonTimerArg_t g_static_button_timer_arg_lut[eButton_Last] = {
  *********************************************************************************************************************/
 
 static void Button_API_Thread (void *arg);
-static void Button_API_DebounceTimerCallback (void *arg);
-static void Button_API_ExtiTriggered (const eExtiDriver_t device);
+static void Button_API_DebounceTimerCallback (void *context);
+static void Button_API_ExtiTriggered (void *context);
+static void Button_API_StartDebounceTimer (const eButton_t button);
 
 /**********************************************************************************************************************
  * Definitions of private functions
  *********************************************************************************************************************/
 
 static void Button_API_Thread (void *arg) {
+    eButton_t button;
+    
     while(1) {
-        for (eButton_t button = eButton_First; button < eButton_Last; button++) {
-            if (g_static_button_desc_lut[button].is_exti) {
-                if (osMessageQueueGet(g_button_message_queue_id, &button, MESSAGE_QUEUE_PRIORITY, MESSAGE_QUEUE_TIMEOUT) != osOK) {
-                    continue;
-                }
+        if (osMessageQueueGet(g_button_message_queue_id, &button, MESSAGE_QUEUE_PRIORITY, MESSAGE_QUEUE_TIMEOUT) == osOK) {    
+            if (g_static_button_desc_lut[button].is_debounce_enable) {
+                Button_API_StartDebounceTimer(button);
+            }
+        }
 
-                if (g_static_button_desc_lut[button].is_debounce_enable) {
-                    osTimerStart(g_dynamic_button_lut[button].debouce_timer, DEBOUNCE_PERIOD);
-                }
+        if (!g_has_pooled_buttons) {
+            continue;
+        }
 
+        for (button = eButton_First; button < eButton_Last; button++) {
+            if (g_static_button_desc_lut[button].is_debounce_enable && (g_dynamic_button_lut[button].debounce_state == eButtonState_Debounce)) {
                 continue;
             }
 
-            if (g_static_button_desc_lut[button].is_debounce_enable && g_dynamic_button_lut[button].debouce_timer_state) {
-                continue;
-            }
-
-            if (!GPIO_Driver_ReadPin(g_static_button_desc_lut[button].gpio_pin, &g_dynamic_button_lut[button].button_state)) {
+            if (!GPIO_Driver_ReadPin(g_static_button_desc_lut[button].gpio_pin, &g_dynamic_button_lut[button].button_value)) {
                 continue;
             }
             
-            if (g_dynamic_button_lut[button].button_state != g_static_button_desc_lut[button].active_state) {
+            if (g_dynamic_button_lut[button].button_value != g_static_button_desc_lut[button].active_state) {
                 continue;
             }
 
             if (g_static_button_desc_lut[button].is_debounce_enable) {
-                g_dynamic_button_lut[button].debouce_timer_state = true;
-
-                osTimerStart(g_dynamic_button_lut[button].debouce_timer, DEBOUNCE_PERIOD);
+                Button_API_StartDebounceTimer(button);
             } else {
-                g_dynamic_button_lut[button].is_tiggered = true;
+                osEventFlagsSet(g_dynamic_button_lut[button].callback_flag, BUTTON_TRIGGERED_EVENT);
             }
         }
-    }
 
-    osThreadYield();
+        osThreadYield();
+    }
 }
 
-static void Button_API_ExtiTriggered (const eExtiDriver_t device) {
-    for (eButton_t button = eButton_First; button < eButton_Last; button++) {
-        if (g_static_button_desc_lut[button].exti_device != device) {
-            continue;
-        }
+static void Button_API_ExtiTriggered (void *context) {
+    sButtonDynamic_t *button = (sButtonDynamic_t*) context;
 
-        if (!g_static_button_desc_lut[button].is_debounce_enable) {
-            g_dynamic_button_lut[button].is_tiggered = true;
+    if (!g_static_button_desc_lut[button->button].is_debounce_enable) {
+        osEventFlagsSet(button->callback_flag, BUTTON_TRIGGERED_EVENT);
 
+        return;
+    }
+
+    Exti_Driver_Disable_IT(g_static_button_desc_lut[button->button].exti_device);
+    osMessageQueuePut(g_button_message_queue_id, &button->button, MESSAGE_QUEUE_PRIORITY, 0);
+
+    return;
+}
+
+static void Button_API_DebounceTimerCallback (void *context) {
+    sButtonDynamic_t *debounce_button = (sButtonDynamic_t*) context;
+
+    if (debounce_button->debounce_state != eButtonState_Debounce) {
+        return;
+    }
+
+    if (g_static_button_desc_lut[debounce_button->button].is_exti) {
+        if (!Exti_Driver_ClearFlag(g_static_button_desc_lut[debounce_button->button].exti_device)) {
             return;
         }
-        
-        Exti_Driver_Disable_IT(g_static_button_desc_lut[button].exti_device);
-        osMessageQueuePut(g_button_message_queue_id, &g_static_button_desc_lut[button].button, MESSAGE_QUEUE_PRIORITY, MESSAGE_QUEUE_TIMEOUT);
 
+        Exti_Driver_Enable_IT(g_static_button_desc_lut[debounce_button->button].exti_device);
+    }
+
+    if (!GPIO_Driver_ReadPin(g_static_button_desc_lut[debounce_button->button].gpio_pin, &debounce_button->button_value)) {
         return;
     }
+
+    if (debounce_button->button_value != g_static_button_desc_lut[debounce_button->button].active_state) {
+        return;
+    }
+
+    if (osMutexAcquire(debounce_button->button_mutex, MUTEX_TIMEOUT) != osOK) {
+        return;
+    }
+
+    osEventFlagsSet(debounce_button->callback_flag, BUTTON_TRIGGERED_EVENT);
+    debounce_button->debounce_state = eButtonState_Init;
+
+    osMutexRelease(debounce_button->button_mutex);
+
+    return;
 }
 
-static void Button_API_DebounceTimerCallback (void *arg) {
-    sButtonTimerArg_t *button_arg_lut = (sButtonTimerArg_t*) arg;
-
-    if (g_static_button_desc_lut[button_arg_lut->button].is_exti) {
-        Exti_Driver_Enable_IT(g_static_button_desc_lut[button_arg_lut->button].exti_device);
-    }
-
-    if (!GPIO_Driver_ReadPin(g_static_button_desc_lut[button_arg_lut->button].gpio_pin, &g_dynamic_button_lut[button_arg_lut->button].button_state)) {
+static void Button_API_StartDebounceTimer (const eButton_t button) {
+    if (!Button_API_IsCorrectButton(button)) {
         return;
     }
 
-    if (g_dynamic_button_lut[button_arg_lut->button].button_state != g_static_button_desc_lut[button_arg_lut->button].active_state) {
+    if (g_dynamic_button_lut[button].debounce_state != eButtonState_Init) {
         return;
     }
 
-    g_dynamic_button_lut[button_arg_lut->button].is_tiggered = true;
-
-    if (!g_static_button_desc_lut[button_arg_lut->button].is_exti) {
-        g_dynamic_button_lut[button_arg_lut->button].debouce_timer_state = false;
+    if (osMutexAcquire(g_dynamic_button_lut[button].button_mutex, MUTEX_TIMEOUT) != osOK) {
+        return;
     }
+
+    g_dynamic_button_lut[button].debounce_state = eButtonState_Debounce;
+    osTimerStart(g_dynamic_button_lut[button].debouce_timer, BUTTON_DEBOUNCE_PERIOD);
+
+    osMutexRelease(g_dynamic_button_lut[button].button_mutex);
 
     return;
 }
@@ -204,8 +230,12 @@ static void Button_API_DebounceTimerCallback (void *arg) {
  * Definitions of exported functions
  *********************************************************************************************************************/
 
-bool Button_API_Init (void) {
-    if (g_all_button_init) {
+bool Button_API_Init (eButton_t button, osEventFlagsId_t event_flags_id) {
+    if (!Button_API_IsCorrectButton(button)) {
+        return false;
+    }
+
+    if (g_dynamic_button_lut[button].debounce_state != eButtonState_Default) {
         return true;
     }
 
@@ -213,14 +243,8 @@ bool Button_API_Init (void) {
         return false;
     }
 
-    for (eButton_t button = eButton_First; button < eButton_Last; button++) {
-        if (!Exti_Driver_InitDevice(g_static_button_desc_lut[button].exti_device, &Button_API_ExtiTriggered)) {
-            return false;
-        }
-
-        if (g_static_button_desc_lut[button].is_debounce_enable) {
-            g_dynamic_button_lut[button].debouce_timer = osTimerNew(Button_API_DebounceTimerCallback, osTimerOnce, &g_static_button_timer_arg_lut[button], &g_static_button_desc_lut[button].debouce_timer_attributes);
-        }
+    if (!Exti_Driver_InitDevice(g_static_button_desc_lut[button].exti_device, &Button_API_ExtiTriggered, &g_dynamic_button_lut[button])) {
+        return false;
     }
 
     if (g_button_thread_id == NULL) {
@@ -231,25 +255,26 @@ bool Button_API_Init (void) {
         g_button_message_queue_id = osMessageQueueNew(BUTTON_MESSAGE_CAPACITY, sizeof(eButton_t), &g_button_message_queue_attributes);
     }
 
-    g_all_button_init = true;
+    if (g_static_button_desc_lut[button].is_debounce_enable) {
+        g_dynamic_button_lut[button].debouce_timer = osTimerNew(Button_API_DebounceTimerCallback, osTimerOnce, &g_dynamic_button_lut[button], &g_static_button_desc_lut[button].debouce_timer_attributes);
+    }
 
-    return g_all_button_init;
-}
+    if (g_dynamic_button_lut[button].button_mutex == NULL) {
+        g_dynamic_button_lut[button].button_mutex = osMutexNew(&g_static_button_desc_lut[button].button_mutex_attributes);
+    }
 
-bool Button_API_IsTriggered (const eButton_t button) {
-    if (!Button_API_IsCorrectButton(button)) {
+    g_dynamic_button_lut[button].callback_flag = event_flags_id;
+
+    if (!g_static_button_desc_lut[button].is_exti) {
+        g_has_pooled_buttons = true;
+    }
+
+    if (!Exti_Driver_Enable_IT(g_static_button_desc_lut[button].exti_device)) {
         return false;
     }
 
-    return g_dynamic_button_lut[button].is_tiggered;
-}
-
-bool Button_API_ClearState (const eButton_t button) {
-    if (!Button_API_IsCorrectButton(button)) {
-        return false;
-    }
-
-    g_dynamic_button_lut[button].is_tiggered = false;
+    g_dynamic_button_lut[button].debounce_state = eButtonState_Init;
+    g_dynamic_button_lut[button].button = button;
 
     return true;
 }

@@ -590,8 +590,10 @@ bool WS2812B_API_Start (const eWs2812b_t device) {
         return false;
     }
 
-    if (osEventFlagsWait(g_ws2812b_api_dynamic_lut[device].flag, TRANSFER_SUCCESS_FLAG, osFlagsWaitAny, DEFAULT_FLAG_TIMEOUT) != TRANSFER_SUCCESS_FLAG) {
-        TRACE_ERR("Failed to receive 'Transfer successful' flag\n");
+    uint32_t flag = osEventFlagsWait(g_ws2812b_api_dynamic_lut[device].flag, TRANSFER_SUCCESS_FLAG, osFlagsWaitAny, DEFAULT_FLAG_TIMEOUT);
+
+    if (flag != TRANSFER_SUCCESS_FLAG) {
+        TRACE_ERR("Received incorect flag: [%ld]\n", (int32_t) flag);
 
         g_ws2812b_api_dynamic_lut[device].led_state = eWs2812bState_Idle;
 
@@ -641,8 +643,10 @@ bool WS2812B_API_Stop (const eWs2812b_t device) {
 
     osMutexRelease(g_ws2812b_api_dynamic_lut[device].mutex);
 
-    if (osEventFlagsWait(g_ws2812b_api_dynamic_lut[device].flag, TRANSFER_SUCCESS_FLAG, osFlagsWaitAny, DEFAULT_FLAG_TIMEOUT) != TRANSFER_SUCCESS_FLAG) {
-        TRACE_ERR("Failed to receive 'Transfer successful' flag\n");
+    uint32_t flag = osEventFlagsWait(g_ws2812b_api_dynamic_lut[device].flag, TRANSFER_SUCCESS_FLAG, osFlagsWaitAny, DEFAULT_FLAG_TIMEOUT);
+
+    if (flag != TRANSFER_SUCCESS_FLAG) {
+        TRACE_ERR("Received incorect flag: [%ld]\n", (int32_t) flag);
 
         return false;
     }
@@ -675,8 +679,10 @@ bool WS2812B_API_Reset (const eWs2812b_t device) {
         return false;
     }
 
-    if (osEventFlagsWait(g_ws2812b_api_dynamic_lut[device].flag, TRANSFER_SUCCESS_FLAG, osFlagsWaitAny, DEFAULT_FLAG_TIMEOUT) != TRANSFER_SUCCESS_FLAG) {
-        TRACE_ERR("Failed to receive 'Transfer successful' flag\n");
+    uint32_t flag = osEventFlagsWait(g_ws2812b_api_dynamic_lut[device].flag, TRANSFER_SUCCESS_FLAG, osFlagsWaitAny, DEFAULT_FLAG_TIMEOUT);
+
+    if (flag != TRANSFER_SUCCESS_FLAG) {
+        TRACE_ERR("Received incorect flag: [%ld]\n", (int32_t) flag);
 
         return false;
     }
@@ -700,10 +706,28 @@ bool WS2812B_API_IsCorrectDevice (const eWs2812b_t device) {
 
 bool WS2812B_API_FreeData (void *data) {
     if (data == NULL) {
+        TRACE_ERR("No data to free\n");
+        
         return false;
     }
 
     return Heap_API_Free(data);
+}
+
+uint32_t WS2812B_API_GetLedCount (const eWs2812b_t device) {
+    if (!WS2812B_API_IsCorrectDevice(device)) {
+        TRACE_ERR("Incorrect device\n");
+        
+        return 0;
+    }
+
+    if (!g_ws2812b_api_is_init) {
+        TRACE_ERR("Device not initialized\n");
+
+        return 0;
+    }
+
+    return g_ws2812b_api_static_lut[device].max_led;
 }
 
 bool WS2812B_API_SetColor (const eWs2812b_t device, size_t led_number, const uint8_t r, const uint8_t g, const uint8_t b) {
@@ -772,7 +796,7 @@ bool WS2812B_API_FillSegment (const eWs2812b_t device, const size_t start_led, c
         return false;
     }
 
-    if (start_led >= end_led || end_led >= g_ws2812b_api_static_lut[device].max_led) {
+    if (start_led >= end_led || end_led > g_ws2812b_api_static_lut[device].max_led) {
         TRACE_ERR("Incorect segment range; start: %d, end: %d\n", start_led, end_led);
         
         return false;

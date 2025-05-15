@@ -92,6 +92,7 @@ bool WS2812B_API_Stop (const eWs2812b_t device);
 bool WS2812B_API_Reset (const eWs2812b_t device);
 bool WS2812B_API_IsCorrectDevice (const eWs2812b_t device);
 bool WS2812B_API_FreeData (void *data);
+uint32_t WS2812B_API_GetLedCount (const eWs2812b_t device);
 bool WS2812B_API_SetColor (const eWs2812b_t device, size_t led_number, const uint8_t r, const uint8_t g, const uint8_t b);
 bool WS2812B_API_FillColor (const eWs2812b_t device, const uint8_t r, const uint8_t g, const uint8_t b);
 bool WS2812B_API_FillSegment (const eWs2812b_t device, const size_t start_led, const size_t end_led, const uint8_t r, const uint8_t g, const uint8_t b);

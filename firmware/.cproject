@@ -57,6 +57,7 @@
 									<listOptionValue builtIn="false" value="../Source/ThirdParty/VL53L0X/core/inc"/>
 									<listOptionValue builtIn="false" value="../Source/API"/>
 									<listOptionValue builtIn="false" value="../Source/APP"/>
+									<listOptionValue builtIn="false" value="../Source/APP/GameModes"/>
 									<listOptionValue builtIn="false" value="../Source/Driver"/>
 									<listOptionValue builtIn="false" value="../Source/Utility"/>
 									<listOptionValue builtIn="false" value="../Source/Utility/Led_animation"/>
@@ -86,7 +87,7 @@
 						</toolChain>
 					</folderInfo>
 					<sourceEntries>
-						<entry excluding="Source/ThirdParty/VL53L0X/platform/src/vl53l0x_i2c_win_serial_comms.c|Source/ThirdParty/VL53L0X/platform/src/vl53l0x_platform_log.c|Source/ThirdParty/VL53L0X/platform/src/vl53l0x_i2c_platform.c|Source/ThirdParty/Core/Src/main.c" flags="VALUE_WORKSPACE_PATH|RESOLVED" kind="sourcePath" name=""/>
+						<entry excluding="Source/ThirdParty/VL53L0X/platform/src/vl53l0x_i2c_platform.c|Source/ThirdParty/VL53L0X/platform/src/vl53l0x_i2c_win_serial_comms.c|Source/ThirdParty/Core/Src/main.c|Source/ThirdParty/VL53L0X/platform/src/vl53l0x_platform_log.c" flags="VALUE_WORKSPACE_PATH|RESOLVED" kind="sourcePath" name=""/>
 					</sourceEntries>
 				</configuration>
 			</storageModule>

@@ -203,7 +203,7 @@ bool DMA_Driver_Init(sDmaInit_t *data) {
         g_dynamic_dma_lut[data->stream].isr_callback = data->isr_callback;
         g_dynamic_dma_lut[data->stream].isr_callback_context = data->isr_callback_context;
         
-        NVIC_SetPriority(g_static_dma_desc_lut[data->stream].nvic, NVIC_EncodePriority(NVIC_GetPriorityGrouping(),5, 0));
+        NVIC_SetPriority(g_static_dma_desc_lut[data->stream].nvic, NVIC_EncodePriority(NVIC_GetPriorityGrouping(), 5, 0));
         NVIC_EnableIRQ(g_static_dma_desc_lut[data->stream].nvic);
         
         LL_DMA_EnableIT_TC(g_static_dma_desc_lut[data->stream].dma, g_static_dma_desc_lut[data->stream].stream);

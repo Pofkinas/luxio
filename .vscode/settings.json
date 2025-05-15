@@ -10,6 +10,19 @@
         "stddef.h": "c",
         "animation_rainbow.h": "c",
         "led_color.h": "c",
-        "timer_driver.h": "c"
+        "timer_driver.h": "c",
+        "stdlib.h": "c",
+        "vl53l0x_api.h": "c",
+        "i2c_api.h": "c",
+        "compare": "cpp",
+        "math_utils.h": "c",
+        "button_api.h": "c",
+        "heap_api.h": "c",
+        "cmsis_os2.h": "c",
+        "freertosconfig.h": "c",
+        "system_config.h": "c",
+        "cmsis_os.h": "c",
+        "reaction_test_app.h": "c",
+        "cstdlib": "c"
     }
 }
