@@ -469,6 +469,12 @@ bool I2C_API_Write (const eI2c_t i2c, const uint8_t device_address, uint8_t *dat
         return false;
     }
 
+    if (I2C_Driver_CheckFlag(g_static_i2c_lut[i2c].i2c_driver, eI2cDriver_Flags_Busy)) {
+        TRACE_ERR("I2C Write: I2C is busy\n");
+
+        return false;
+    }
+
     if (osMutexAcquire(g_dynamic_i2c[i2c].mutex, MUTEX_TIMEOUT) != osOK) {
         return false;
     }
@@ -494,7 +500,7 @@ bool I2C_API_Write (const eI2c_t i2c, const uint8_t device_address, uint8_t *dat
     I2C_Driver_DisableIt(i2c);
 
     if ((int32_t) flag < 0) {
-        TRACE_ERR("I2C Write: Error event flag [%d], I2C state: [%d]\n", (int32_t) flag, g_dynamic_i2c[i2c].state);
+        TRACE_ERR("I2C Write: Error event flag [%d], I2C state: [%s]\n", (int32_t) flag, I2C_API_GetStateString( g_dynamic_i2c[i2c].state));
 
         if (osMutexAcquire(g_dynamic_i2c[i2c].mutex, MUTEX_TIMEOUT) != osOK) {
             return false;
@@ -525,6 +531,12 @@ bool I2C_API_Read (const eI2c_t i2c, const uint8_t device_address, uint8_t *data
         return false;
     }
 
+    if (I2C_Driver_CheckFlag(g_static_i2c_lut[i2c].i2c_driver, eI2cDriver_Flags_Busy)) {
+        TRACE_ERR("I2C Read: I2C is busy\n");
+
+        return false;
+    }
+
     if (osMutexAcquire(g_dynamic_i2c[i2c].mutex, MUTEX_TIMEOUT) != osOK) {
         return false;
     }
@@ -550,7 +562,7 @@ bool I2C_API_Read (const eI2c_t i2c, const uint8_t device_address, uint8_t *data
     I2C_Driver_DisableIt(i2c);
 
     if ((int32_t) flag < 0) {
-        TRACE_ERR("I2C Read: Error event flag [%d], I2C state: [%d]\n", (int32_t) flag, g_dynamic_i2c[i2c].state);
+        TRACE_ERR("I2C Read: Error event flag [%d], I2C state: [%s]\n", (int32_t) flag, I2C_API_GetStateString( g_dynamic_i2c[i2c].state));
         
         if (osMutexAcquire(g_dynamic_i2c[i2c].mutex, MUTEX_TIMEOUT) != osOK) {
             return false;

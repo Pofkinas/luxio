@@ -11,7 +11,7 @@
  * Exported definitions and macros
  *********************************************************************************************************************/
 
-#define BUTTON_DEBOUNCE_PERIOD 30U
+#define BUTTON_DEBOUNCE_PERIOD 50U
 
 #define BUTTON_TRIGGERED_EVENT 0x01U
 

@@ -330,6 +330,47 @@ bool I2C_Driver_ReadByteAck (const eI2cDriver_t i2c, uint8_t *data, const bool a
     return true;
 }
 
+bool I2C_Driver_CheckFlag (const eI2cDriver_t i2c, const eI2cDriver_Flags_t flag) {
+    if ((i2c < eI2cDriver_First) || (i2c >= eI2cDriver_Last)) {
+        return false;
+    }
+
+    if (!g_dynamic_i2c[i2c].is_init) {
+        return false;
+    }
+    
+    uint32_t (*flag_fp) (I2C_TypeDef *i2c) = NULL;
+    
+    switch (flag) {
+        case eI2cDriver_Flags_Busy: {
+            flag_fp = LL_I2C_IsActiveFlag_BUSY;
+        } break;
+        case eI2cDriver_Flags_Addr: {
+            flag_fp = LL_I2C_IsActiveFlag_ADDR;
+        } break;
+        case eI2cDriver_Flags_Txe: {
+            flag_fp = LL_I2C_IsActiveFlag_TXE;
+        } break;
+        case eI2cDriver_Flags_Rxne: {
+            flag_fp = LL_I2C_IsActiveFlag_RXNE;
+        } break;
+        case eI2cDriver_Flags_StartBit : {
+            flag_fp = LL_I2C_IsActiveFlag_SB;
+        } break;
+        case eI2cDriver_Flags_ByteTransferFinish: {
+            flag_fp = LL_I2C_IsActiveFlag_BTF;
+        } break;
+        case eI2cDriver_Flags_AckFailure: {
+            flag_fp = LL_I2C_IsActiveFlag_AF;
+        } break;
+        default: {
+            return false;
+        }
+    }
+
+    return flag_fp(g_static_i2c_lut[i2c].periph);
+}
+
 void I2C_Driver_ClearFlag (const eI2cDriver_t i2c, const eI2cDriver_Flags_t flag) {
     if ((i2c < eI2cDriver_First) || (i2c >= eI2cDriver_Last)) {
         return;

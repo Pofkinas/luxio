@@ -78,6 +78,7 @@ typedef struct sReactionModuleDynamicDesc {
     uint32_t start_time;
     uint32_t end_time;
     uint16_t registerd_distance;
+    uint32_t timer_event_flag;
 } sReactionTestDynamicDesc_t;
 
 /**********************************************************************************************************************
@@ -124,6 +125,8 @@ static bool g_is_initialized = false;
 static osThreadId_t g_reaction_test_thread_id = NULL;
 static osEventFlagsId_t g_start_button_event = NULL;
 
+static osEventFlagsId_t g_timer_flag = NULL;
+
 static eReactionTestState_t g_reaction_test_state = eReactionTestState_Off;
 static eGameMode_t g_game_mode = eGameMode_Classic;
 static sGameModeInstance_t g_game_mode_instance;
@@ -146,7 +149,8 @@ static sReactionTestDynamicDesc_t g_dynamic_reaction_test_desc[eModule_Last] = {
         .target_distance = 0,
         .start_time = 0,
         .end_time = 0,
-        .registerd_distance = 0
+        .registerd_distance = 0,
+        .timer_event_flag = 0x02U
     }
 };
 /* clang-format on */ 
@@ -257,12 +261,32 @@ static void Reaction_Test_Thread (void* arg) {
 
                 for (uint8_t module = 0; module < g_active_modules_count; module++) {
                     if (g_dynamic_reaction_test_desc[g_active_modules[module]].state != eModuleState_Active) {
+                        if (osEventFlagsWait(g_timer_flag, g_dynamic_reaction_test_desc[module].timer_event_flag, osFlagsWaitAny, 0U) == g_dynamic_reaction_test_desc[module].timer_event_flag) {
+                            if (!WS2812B_API_Start(g_static_reaction_test_desc[module].ws2812b)) {
+                                TRACE_ERR("Failed to start animation on [%d] module\n", module);
+                        
+                                g_reaction_test_state = eReactionTestState_Init;
+                        
+                                return;
+                            }
+
+                            if (!VL53L0X_API_Enable(g_static_reaction_test_desc[module].vl53l0x)) {
+                                TRACE_ERR("Failed to enable vl53l0 on [%d] module\n", module);
+                        
+                                g_reaction_test_state = eReactionTestState_Init;
+                        
+                                return;
+                            }
+                        
+                            g_dynamic_reaction_test_desc[module].state = eModuleState_Active;
+                        
+                            g_dynamic_reaction_test_desc[module].start_time = osKernelGetTickCount();
+                        }
+                        
                         continue;
                     }
 
                     if (!VL53L0X_API_GetDistance(g_static_reaction_test_desc[g_active_modules[module]].vl53l0x, &g_dynamic_reaction_test_desc[g_active_modules[module]].registerd_distance, DEFAULT_MEASURE_TIMEOUT)) {
-                        TRACE_ERR("Failed to get distance from [%d] module: VL53L0X API Get Distance failed\n", g_active_modules[module]);
-
                         continue;
                     }
 
@@ -399,17 +423,7 @@ static void Reaction_Test_DelayStartTimer (void *arg) {
         return;
     }
 
-    if (!WS2812B_API_Start(g_static_reaction_test_desc[module->module].ws2812b)) {
-        TRACE_ERR("Failed to start animation on [%d] module\n", module->module);
-
-        g_reaction_test_state = eReactionTestState_Init;
-
-        return;
-    }
-
-    module->state = eModuleState_Active;
-
-    module->start_time = osKernelGetTickCount();
+    osEventFlagsSet(g_timer_flag, module->timer_event_flag);
 
     return;
 }
@@ -465,6 +479,10 @@ bool Reaction_Test_App_Init (void) {
 
     if (g_reaction_test_thread_id == NULL) {
         g_reaction_test_thread_id = osThreadNew(Reaction_Test_Thread, NULL, &g_reaction_test_thread_attributes);
+    }
+
+    if (g_timer_flag == NULL) {
+        g_timer_flag = osEventFlagsNew(&g_start_button_event_attributes);
     }
     
     g_is_initialized = true;

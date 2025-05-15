@@ -582,6 +582,8 @@ bool WS2812B_API_Start (const eWs2812b_t device) {
     
     g_ws2812b_api_dynamic_lut[device].led_state = eWs2812bState_Running;
 
+    osEventFlagsClear(g_ws2812b_api_dynamic_lut[device].flag, TRANSFER_SUCCESS_FLAG);
+
     if (!WS2812B_API_Update(device)) {
         TRACE_ERR("WS2812B_API_Update failed\n");
         
@@ -590,7 +592,9 @@ bool WS2812B_API_Start (const eWs2812b_t device) {
         return false;
     }
 
-    uint32_t flag = osEventFlagsWait(g_ws2812b_api_dynamic_lut[device].flag, TRANSFER_SUCCESS_FLAG, osFlagsWaitAny, DEFAULT_FLAG_TIMEOUT);
+    uint32_t flag = osEventFlagsWait(g_ws2812b_api_dynamic_lut[device].flag, TRANSFER_SUCCESS_FLAG, osFlagsWaitAny | osFlagsNoClear, DEFAULT_FLAG_TIMEOUT);
+
+    osEventFlagsClear(g_ws2812b_api_dynamic_lut[device].flag, TRANSFER_SUCCESS_FLAG);
 
     if (flag != TRANSFER_SUCCESS_FLAG) {
         TRACE_ERR("Received incorect flag: [%ld]\n", (int32_t) flag);
