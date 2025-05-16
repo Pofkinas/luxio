@@ -18,6 +18,14 @@
  * Private typedef
  *********************************************************************************************************************/
 
+typedef enum eI2cDriverState {
+    eI2cDriverState_First = 0,
+    eI2cDriverState_Off = eI2cDriverState_First,
+    eI2cDriverState_Init,
+    eI2cDriverState_Reset,
+    eI2cDriverState_Last
+} eI2cDriverState_t;
+
 typedef struct sI2cDesc {
     I2C_TypeDef *periph;
     uint32_t peripheral_mode;
@@ -38,7 +46,7 @@ typedef struct sI2cDesc {
 } sI2cDesc_t;
 
 typedef struct sI2cDynamicDesc {
-    bool is_init;
+    eI2cDriverState_t state;
     uint8_t address;
     uint8_t rw_operation;
     i2c_callback_t flag_callback;
@@ -77,7 +85,7 @@ static const sI2cDesc_t g_static_i2c_lut[eI2cDriver_Last] = {
 /* clang-format off */
 static sI2cDynamicDesc_t g_dynamic_i2c[eI2cDriver_Last] = {
     [eI2cDriver_1] = {
-        .is_init = false,
+        .state = eI2cDriverState_Off,
         .address = 0,
         .rw_operation = 0,
         .flag_callback = NULL,
@@ -94,15 +102,27 @@ static sI2cDynamicDesc_t g_dynamic_i2c[eI2cDriver_Last] = {
  * Prototypes of private functions
  *********************************************************************************************************************/
 
+void I2C1_EV_IRQHandler (void);
+void I2C_Driver_ClearAllFlags (const eI2cDriver_t i2c);
+
 /**********************************************************************************************************************
  * Definitions of private functions
  *********************************************************************************************************************/
 
-void I2C1_EV_IRQHandler(void) {
+void I2C1_EV_IRQHandler (void) {
     eI2cDriver_Flags_t flag = eI2cDriver_Flags_Last;
     
     if (LL_I2C_IsActiveFlag_SB(I2C1)) {
         LL_I2C_TransmitData8(I2C1, (uint8_t)((g_dynamic_i2c[eI2cDriver_1].address << 1) | (g_dynamic_i2c[eI2cDriver_1].rw_operation & 0x1)));
+
+        if (g_dynamic_i2c[eI2cDriver_1].state == eI2cDriverState_Reset) {
+            g_dynamic_i2c[eI2cDriver_1].state = eI2cDriverState_Init;
+
+            I2C_Driver_StopComms(eI2cDriver_1);
+            I2C_Driver_DisableIt(eI2cDriver_1);
+
+            I2C_Driver_ClearFlag(eI2cDriver_1, eI2cDriver_Flags_AckFailure);
+        }
 
         return;
     } else if (LL_I2C_IsActiveFlag_ADDR(I2C1)) {
@@ -135,6 +155,34 @@ void I2C1_EV_IRQHandler(void) {
     return;
 }
 
+void I2C_Driver_ClearAllFlags (const eI2cDriver_t i2c) {
+    if ((i2c < eI2cDriver_First) || (i2c >= eI2cDriver_Last)) {
+        return;
+    }
+
+    if (g_dynamic_i2c[i2c].state == eI2cDriverState_Off){ 
+        return;
+    }
+    
+    if (LL_I2C_IsActiveFlag_AF(g_static_i2c_lut[i2c].periph)) {
+        LL_I2C_ClearFlag_AF(g_static_i2c_lut[i2c].periph);
+    } 
+    if (LL_I2C_IsActiveFlag_ARLO(g_static_i2c_lut[i2c].periph)) {
+        LL_I2C_ClearFlag_ARLO(g_static_i2c_lut[i2c].periph);
+    } 
+    if (LL_I2C_IsActiveFlag_BERR(g_static_i2c_lut[i2c].periph)) {
+        LL_I2C_ClearFlag_BERR(g_static_i2c_lut[i2c].periph);
+    }
+    if (LL_I2C_IsActiveFlag_STOP(g_static_i2c_lut[i2c].periph)) {
+        LL_I2C_ClearFlag_STOP(g_static_i2c_lut[i2c].periph);
+    }
+    if (LL_I2C_IsActiveFlag_ADDR(g_static_i2c_lut[i2c].periph)) {
+        LL_I2C_ClearFlag_ADDR(g_static_i2c_lut[i2c].periph);
+    }
+
+    return;
+}
+
 /**********************************************************************************************************************
  * Definitions of exported functions
  *********************************************************************************************************************/
@@ -152,7 +200,7 @@ bool I2C_Driver_Init (const eI2cDriver_t i2c, i2c_callback_t flag_callback, void
         return false;
     }
     
-    if (g_dynamic_i2c[i2c].is_init){ 
+    if (g_dynamic_i2c[i2c].state != eI2cDriverState_Off) { 
         return true;
     }
 
@@ -186,9 +234,9 @@ bool I2C_Driver_Init (const eI2cDriver_t i2c, i2c_callback_t flag_callback, void
 
     g_dynamic_i2c[i2c].flag_callback = flag_callback;
     g_dynamic_i2c[i2c].callback_context = context;
-    g_dynamic_i2c[i2c].is_init = true;
+    g_dynamic_i2c[i2c].state = eI2cDriverState_Init;
 
-    return g_dynamic_i2c[i2c].is_init;
+    return true;
 }
 
 bool I2C_Driver_EnableIt (const eI2cDriver_t i2c) {
@@ -196,7 +244,7 @@ bool I2C_Driver_EnableIt (const eI2cDriver_t i2c) {
         return false;
     }
 
-    if (!g_dynamic_i2c[i2c].is_init) {
+    if (g_dynamic_i2c[i2c].state == eI2cDriverState_Off) {
         return false;
     }
 
@@ -211,7 +259,7 @@ bool I2C_Driver_DisableIt (const eI2cDriver_t i2c) {
         return false;
     }
 
-    if (!g_dynamic_i2c[i2c].is_init) {
+    if (g_dynamic_i2c[i2c].state == eI2cDriverState_Off) {
         return false;
     }
 
@@ -226,7 +274,7 @@ bool I2C_Driver_StartComms (const eI2cDriver_t i2c, const uint8_t address, const
         return false;
     }
 
-    if (!g_dynamic_i2c[i2c].is_init) {
+    if (g_dynamic_i2c[i2c].state == eI2cDriverState_Off) {
         return false;
     }
 
@@ -247,7 +295,7 @@ bool I2C_Driver_StopComms (const eI2cDriver_t i2c) {
         return false;
     }
 
-    if (!g_dynamic_i2c[i2c].is_init) {
+    if (g_dynamic_i2c[i2c].state == eI2cDriverState_Off) {
         return false;
     }
 
@@ -261,7 +309,7 @@ bool I2C_Driver_Acknowledge (const eI2cDriver_t i2c, const bool ack) {
         return false;
     }
 
-    if (!g_dynamic_i2c[i2c].is_init) {
+    if (g_dynamic_i2c[i2c].state != eI2cDriverState_Init) {
         return false;
     }
 
@@ -279,7 +327,7 @@ bool I2C_Driver_SendByte (const eI2cDriver_t i2c, const uint8_t data) {
         return false;
     }
 
-    if (!g_dynamic_i2c[i2c].is_init) {
+    if (g_dynamic_i2c[i2c].state != eI2cDriverState_Init) {
         return false;
     }
 
@@ -293,7 +341,7 @@ bool I2C_Driver_ReadByte (const eI2cDriver_t i2c, uint8_t *data) {
         return false;
     }
 
-    if (!g_dynamic_i2c[i2c].is_init) {
+    if (g_dynamic_i2c[i2c].state != eI2cDriverState_Init) {
         return false;
     }
 
@@ -311,7 +359,7 @@ bool I2C_Driver_ReadByteAck (const eI2cDriver_t i2c, uint8_t *data, const bool a
         return false;
     }
 
-    if (!g_dynamic_i2c[i2c].is_init) {
+    if (g_dynamic_i2c[i2c].state != eI2cDriverState_Init) {
         return false;
     }
 
@@ -335,7 +383,7 @@ bool I2C_Driver_CheckFlag (const eI2cDriver_t i2c, const eI2cDriver_Flags_t flag
         return false;
     }
 
-    if (!g_dynamic_i2c[i2c].is_init) {
+    if (g_dynamic_i2c[i2c].state == eI2cDriverState_Off) {
         return false;
     }
     
@@ -376,7 +424,7 @@ void I2C_Driver_ClearFlag (const eI2cDriver_t i2c, const eI2cDriver_Flags_t flag
         return;
     }
 
-    if (!g_dynamic_i2c[i2c].is_init) {
+    if (g_dynamic_i2c[i2c].state == eI2cDriverState_Off) {
         return;
     }
     
@@ -407,16 +455,21 @@ bool I2C_Driver_ResetLine (const eI2cDriver_t i2c) {
         return false;
     }
 
-    if (!g_dynamic_i2c[i2c].is_init) {
+    if (g_dynamic_i2c[i2c].state == eI2cDriverState_Off) {
         return false;
     }
 
+    LL_I2C_Disable(g_static_i2c_lut[i2c].periph);
+
+    I2C_Driver_ClearAllFlags(i2c);
+
+    g_dynamic_i2c[i2c].state = eI2cDriverState_Reset;
+
+    LL_I2C_Enable(g_static_i2c_lut[i2c].periph);
+
+    I2C_Driver_EnableIt(i2c);
+
     I2C_Driver_StartComms(i2c, GENERAL_CALL_ADDRESS, I2C_WRITE);
-    I2C_Driver_StopComms(i2c);
 
-    bool ack_failed = LL_I2C_IsActiveFlag_AF(g_static_i2c_lut[i2c].periph);
-
-    I2C_Driver_ClearFlag(i2c, eI2cDriver_Flags_AckFailure);
-
-    return !ack_failed;
+    return true;
 }

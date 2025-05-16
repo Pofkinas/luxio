@@ -402,9 +402,9 @@ static void I2C_API_HandleSuccess (const eI2c_t i2c) {
         return;
     }
 
-    osEventFlagsSet(g_dynamic_i2c[i2c].flag, I2C_FLAG_SUCCESS);
+    I2C_Driver_DisableIt(i2c);
 
-    g_dynamic_i2c[i2c].state = eI2cState_Idle;
+    osEventFlagsSet(g_dynamic_i2c[i2c].flag, I2C_FLAG_SUCCESS);
 
     return;
 }
@@ -418,12 +418,11 @@ static void I2C_API_HandleError (const eI2c_t i2c) {
         return;
     }
 
-    I2C_Driver_StopComms(g_static_i2c_lut[i2c].i2c_driver);
+    I2C_Driver_DisableIt(i2c);
+
     I2C_Driver_ResetLine(g_static_i2c_lut[i2c].i2c_driver);
 
     osEventFlagsSet(g_dynamic_i2c[i2c].flag, I2C_FLAG_ERROR);
-
-    g_dynamic_i2c[i2c].state = eI2cState_Idle;
 
     return;
 }
@@ -497,20 +496,26 @@ bool I2C_API_Write (const eI2c_t i2c, const uint8_t device_address, uint8_t *dat
 
     uint32_t flag = osEventFlagsWait(g_dynamic_i2c[i2c].flag, I2C_FLAG_SUCCESS | I2C_FLAG_ERROR, osFlagsWaitAny, timeout);
 
-    I2C_Driver_DisableIt(i2c);
+    if (osMutexAcquire(g_dynamic_i2c[i2c].mutex, MUTEX_TIMEOUT) != osOK) {
+        return false;
+    }
 
     if ((int32_t) flag < 0) {
+        g_dynamic_i2c[i2c].state = eI2cState_Error;
+    } else {
+        g_dynamic_i2c[i2c].state = eI2cState_Idle;
+    }
+
+    osMutexRelease(g_dynamic_i2c[i2c].mutex);
+
+    if (g_dynamic_i2c[i2c].state == eI2cState_Error) {
+        I2C_Driver_DisableIt(i2c);
+
         TRACE_ERR("I2C Write: Error event flag [%d], I2C state: [%s]\n", (int32_t) flag, I2C_API_GetStateString( g_dynamic_i2c[i2c].state));
 
-        if (osMutexAcquire(g_dynamic_i2c[i2c].mutex, MUTEX_TIMEOUT) != osOK) {
-            return false;
-        }
-
-        g_dynamic_i2c[i2c].state = eI2cState_Error;
-
-        osMutexRelease(g_dynamic_i2c[i2c].mutex);
-
         I2C_API_HandleError(i2c);
+
+        osEventFlagsClear(g_dynamic_i2c[i2c].flag, I2C_FLAG_ERROR);
 
         return false;
     }
@@ -559,29 +564,35 @@ bool I2C_API_Read (const eI2c_t i2c, const uint8_t device_address, uint8_t *data
 
     uint32_t flag = osEventFlagsWait(g_dynamic_i2c[i2c].flag, I2C_FLAG_SUCCESS | I2C_FLAG_ERROR, osFlagsWaitAny, timeout);
 
-    I2C_Driver_DisableIt(i2c);
+    if (osMutexAcquire(g_dynamic_i2c[i2c].mutex, MUTEX_TIMEOUT) != osOK) {
+        return false;
+    }
 
     if ((int32_t) flag < 0) {
-        TRACE_ERR("I2C Read: Error event flag [%d], I2C state: [%s]\n", (int32_t) flag, I2C_API_GetStateString( g_dynamic_i2c[i2c].state));
-        
-        if (osMutexAcquire(g_dynamic_i2c[i2c].mutex, MUTEX_TIMEOUT) != osOK) {
-            return false;
-        }
-
         g_dynamic_i2c[i2c].state = eI2cState_Error;
-        
+    } else {
+        g_dynamic_i2c[i2c].state = eI2cState_Idle;
+    }
+
+    if (g_dynamic_i2c[i2c].state == eI2cState_Error) {
         osMutexRelease(g_dynamic_i2c[i2c].mutex);
+        
+        I2C_Driver_DisableIt(i2c);
+
+        TRACE_ERR("I2C Read: Error event flag [%d], I2C state: [%s]\n", (int32_t) flag, I2C_API_GetStateString( g_dynamic_i2c[i2c].state));
 
         I2C_API_HandleError(i2c);
 
+        osEventFlagsClear(g_dynamic_i2c[i2c].flag, I2C_FLAG_ERROR);
+
         return false;
     }
 
-    if (flag == I2C_FLAG_ERROR) {
-        return false;
+    if (flag == I2C_FLAG_SUCCESS) {
+        memcpy(data, g_dynamic_i2c[i2c].data, data_size);
     }
 
-    memcpy(data, g_dynamic_i2c[i2c].data, data_size);
+    osMutexRelease(g_dynamic_i2c[i2c].mutex);
 
-    return true;
+    return (flag == I2C_FLAG_SUCCESS);
 }
