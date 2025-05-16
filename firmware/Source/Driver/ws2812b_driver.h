@@ -1,33 +1,41 @@
-#ifndef SOURCE_DRIVER_GPIO_DRIVER_H_
-#define SOURCE_DRIVER_GPIO_DRIVER_H_
+#ifndef SOURCE_DRIVER_WS2812B_DRIVER_H_
+#define SOURCE_DRIVER_WS2812B_DRIVER_H_
 /**********************************************************************************************************************
  * Includes
  *********************************************************************************************************************/
 
-#include <stdbool.h>
-#include <stdint.h>
+#include "stdbool.h"
+#include "stdint.h"
+#include "stddef.h"
 
 /**********************************************************************************************************************
  * Exported definitions and macros
  *********************************************************************************************************************/
+
+#define LED_DATA_CHANNELS 3 
+#define WS2812B_1_LED_COUNT 10
 
 /**********************************************************************************************************************
  * Exported types
  *********************************************************************************************************************/
 
 /* clang-format off */
-typedef enum eGpioPin {
-    eGpioPin_First = 0, 
-    eGpioPin_StartButton = eGpioPin_First,
-    eGpioPin_DebugTx,
-    eGpioPin_DebugRx,
-    eGpioPin_I2c1_SCL,
-    eGpioPin_I2c1_SDA,
-    eGpioPin_vl53l0_Xshut_1,
-    eGpioPin_Ws2812B,
-    eGpioPin_Last
-} eGpioPin_t;
+typedef enum eWs2812bDriver {
+    eWs2812bDriver_First = 0,
+    eWs2812bDriver_1 = eWs2812bDriver_First,
+    eWs2812bDriver_Last
+} eWs2812bDriver_t;
+
+typedef enum eLedTransferState {
+    eLedTransferState_First = 0,
+    eLedTransferState_Start = eLedTransferState_First,
+    eLedTransferState_Complete,
+    eLedTransferState_TransferError,
+    eLedTransferState_Last
+} eLedTransferState_t;
 /* clang-format on */
+
+typedef void (*led_driver_callback_t) (void *context, const eLedTransferState_t transfer_state);
 
 /**********************************************************************************************************************
  * Exported variables
@@ -37,10 +45,9 @@ typedef enum eGpioPin {
  * Prototypes of exported functions
  *********************************************************************************************************************/
 
-bool GPIO_Driver_InitAllPins (void);
-bool GPIO_Driver_WritePin (const eGpioPin_t gpio_pin, const bool pin_state);
-bool GPIO_Driver_ReadPin (const eGpioPin_t gpio_pin, bool *pin_state);
-bool GPIO_Driver_TogglePin (const eGpioPin_t gpio_pin);
-bool GPIO_Driver_ResetPin (const eGpioPin_t gpio_pin);
+bool WS2812B_Driver_Init (const eWs2812bDriver_t device, led_driver_callback_t callback, void *callback_context);
+bool WS2812B_Driver_Set (const eWs2812bDriver_t device, uint8_t *led_data, size_t led_count);
+bool WS2812B_Driver_Reset (const eWs2812bDriver_t device);
+uint16_t WS2812B_Driver_GetMinRefreshRate (const eWs2812bDriver_t device);
 
-#endif /* SOURCE_DRIVER_GPIO_DRIVER_H_ */
+#endif /* SOURCE_DRIVER_WS2812B_DRIVER_H_ */

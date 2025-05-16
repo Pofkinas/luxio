@@ -29,7 +29,8 @@ typedef struct sExtiDesc {
 
 typedef struct sExtiDynamic {
     bool is_init;
-    exti_callback_t callback;
+    void (*callback) (void *context);
+    void *callback_context;
 } sExtiDynamic_t;
 
 /**********************************************************************************************************************
@@ -59,7 +60,8 @@ const static sExtiDesc_t g_static_exti_lut[eExtiDriver_Last] = {
 static sExtiDynamic_t g_dynamic_exti_lut[eExtiDriver_Last] = {
     [eExtiDriver_StartButton] = {
         .is_init = false,
-        .callback = NULL
+        .callback = NULL,
+        .callback_context = NULL,
     }
 };
 /* clang-format on */
@@ -87,11 +89,13 @@ static void EXTIx_IRQHandler (const IRQn_Type interupt) {
         }
 
         if (LL_EXTI_IsActiveFlag_0_31(g_static_exti_lut[exti_device].line_0_31)) {
-            LL_EXTI_ClearFlag_0_31(g_static_exti_lut[exti_device].line_0_31);
+            Exti_Driver_ClearFlag(exti_device);
 
-            g_dynamic_exti_lut[exti_device].callback(exti_device);
+            g_dynamic_exti_lut[exti_device].callback(g_dynamic_exti_lut[exti_device].callback_context);
         }
     }
+
+    return;
 }
 
 void EXTI0_IRQHandler(void) {
@@ -106,13 +110,17 @@ void EXTI1_IRQHandler(void) {
  * Definitions of exported functions
  *********************************************************************************************************************/
 
-bool Exti_Driver_InitDevice (eExtiDriver_t exti_device, exti_callback_t exti_callback) {
-    if (g_dynamic_exti_lut[exti_device].is_init) {
-        return true;
+bool Exti_Driver_InitDevice (const eExtiDriver_t exti_device, exti_callback_t exti_callback, void *callback_context) {
+    if (exti_callback == NULL) {
+        return false;
     }
 
     if ((exti_device < eExtiDriver_First) || (exti_device >= eExtiDriver_Last)) {
         return false;
+    }
+
+    if (g_dynamic_exti_lut[exti_device].is_init) {
+        return true;
     }
 
     LL_EXTI_InitTypeDef exti_init_struct = {0};
@@ -134,6 +142,7 @@ bool Exti_Driver_InitDevice (eExtiDriver_t exti_device, exti_callback_t exti_cal
 
     g_dynamic_exti_lut[exti_device].is_init = true;
     g_dynamic_exti_lut[exti_device].callback = exti_callback;
+    g_dynamic_exti_lut[exti_device].callback_context = callback_context;
 
     return true;
 }
@@ -154,6 +163,16 @@ bool Exti_Driver_Enable_IT (const eExtiDriver_t exti_device) {
     }
 
     LL_EXTI_EnableIT_0_31(g_static_exti_lut[exti_device].line_0_31);
+
+    return true;
+}
+
+bool Exti_Driver_ClearFlag (const eExtiDriver_t exti_device) {
+    if ((exti_device < eExtiDriver_First) || (exti_device >= eExtiDriver_Last)) {
+        return false;
+    }
+
+    LL_EXTI_ClearFlag_0_31(g_static_exti_lut[exti_device].line_0_31);
 
     return true;
 }

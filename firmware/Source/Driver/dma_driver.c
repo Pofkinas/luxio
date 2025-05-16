@@ -31,7 +31,8 @@ typedef struct sDmaDynamicDesc {
     bool is_init;
     uint32_t *periph_or_src_addr;
     uint32_t *mem_or_dest_addr;
-    void (*isr_callback) (const eDmaDriver_t, const eDmaDriver_Flags_t);
+    void (*isr_callback) (void *isr_callback_context, const eDmaDriver_Flags_t);
+    void *isr_callback_context;
 } sDmaDynamicDesc_t;
 
 typedef struct sDmaIsActiveFlags {
@@ -136,7 +137,7 @@ static void DMAx_Streamx_ISRHandler(const eDmaDriver_t stream, const eDmaDriver_
 
     DMA_Driver_ClearFlag(stream, flag);
 
-    g_dynamic_dma_lut[stream].isr_callback(stream, flag);
+    g_dynamic_dma_lut[stream].isr_callback(g_dynamic_dma_lut[stream].isr_callback_context, flag);
 
     return;
 }
@@ -200,8 +201,9 @@ bool DMA_Driver_Init(sDmaInit_t *data) {
 
     if (data->isr_callback != NULL) {
         g_dynamic_dma_lut[data->stream].isr_callback = data->isr_callback;
+        g_dynamic_dma_lut[data->stream].isr_callback_context = data->isr_callback_context;
         
-        NVIC_SetPriority(g_static_dma_desc_lut[data->stream].nvic, NVIC_EncodePriority(NVIC_GetPriorityGrouping(),5, 0));
+        NVIC_SetPriority(g_static_dma_desc_lut[data->stream].nvic, NVIC_EncodePriority(NVIC_GetPriorityGrouping(), 5, 0));
         NVIC_EnableIRQ(g_static_dma_desc_lut[data->stream].nvic);
         
         LL_DMA_EnableIT_TC(g_static_dma_desc_lut[data->stream].dma, g_static_dma_desc_lut[data->stream].stream);
