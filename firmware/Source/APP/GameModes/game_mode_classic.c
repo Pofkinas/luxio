@@ -104,6 +104,14 @@ bool Game_Mode_Classic_Start (void *context) {
 
     g_active_modules_count = active_modules;
 
+    for (eModule_t module = eModule_First; module < eModule_Last; module++) {
+        if (!Reaction_Test_App_ActiveteModule(module, eModuleState_Default)) {
+            TRACE_ERR("Failed to active [%d] module\n", module);
+
+            return false;
+        }
+    }
+
     while (active_modules > 0) {
         uint32_t module_index = Math_Utils_RandomRange(0, eModule_Last);
 
@@ -127,33 +135,13 @@ bool Game_Mode_Classic_Start (void *context) {
             return false;
         }
 
-        active_modules --;
-    }
+        uint32_t start_delay = Math_Utils_RandomRange(MIN_START_DELAY, MAX_START_DELAY);
 
-    sModuleState_t state;
-
-    for (eModule_t module = eModule_First; module < eModule_Last; module++) {
-        state = Reaction_Test_App_GetModuleState(module);
-
-        switch (state) {
-            case eModuleState_Off: {
-                if (!Reaction_Test_App_ActiveteModule(module, eModuleState_Default)) {
-                    TRACE_ERR("Failed to active [%d] module\n", module);
-
-                    return false;
-                }
-            } break;
-            case eModuleState_Ready: {
-                uint32_t start_delay = Math_Utils_RandomRange(MIN_START_DELAY, MAX_START_DELAY);
-
-                if (!Reaction_Test_App_StartDelayTimer(module, start_delay)) {
-                    return false;
-                }
-            } break;
-            default: {
-                break;
-            }
+        if (!Reaction_Test_App_StartDelayTimer(module_index, start_delay)) {
+            return false;
         }
+
+        active_modules --;
     }
 
     return true;

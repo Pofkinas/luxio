@@ -85,6 +85,13 @@ const static sWs2812bApiDesc_t g_ws2812b_api_static_lut[eWs2812b_Last] = {
         .timer_attributes = {.name = "WS2812B_API_1_Timer", .attr_bits = 0, .cb_mem = NULL, .cb_size = 0U},
         .mutex_attributes = {.name = "WS2812B_API_1_Mutex", .attr_bits = osMutexRecursive | osMutexPrioInherit, .cb_mem = NULL, .cb_size = 0U},
         .flag_attributes = {.name = "WS2812B_API_1_EventFlag", .attr_bits = 0, .cb_mem = NULL, .cb_size = 0U}
+    },
+    [eWs2812b_2] = {
+        .device = eWs2812bDriver_2,
+        .max_led = WS2812B_2_LED_COUNT,
+        .timer_attributes = {.name = "WS2812B_API_2_Timer", .attr_bits = 0, .cb_mem = NULL, .cb_size = 0U},
+        .mutex_attributes = {.name = "WS2812B_API_2_Mutex", .attr_bits = osMutexRecursive | osMutexPrioInherit, .cb_mem = NULL, .cb_size = 0U},
+        .flag_attributes = {.name = "WS2812B_API_2_EventFlag", .attr_bits = 0, .cb_mem = NULL, .cb_size = 0U}
     }
 };
 /* clang-format on */ 
@@ -98,6 +105,16 @@ static bool g_ws2812b_api_is_init = false;
 /* clang-format off */
 static sWs2812bApiDynamicDesc_t g_ws2812b_api_dynamic_lut[eWs2812b_Last] = {
     [eWs2812b_1] = {
+        .led_data = NULL,
+        .led_count = 0,
+        .led_state = eWs2812bState_Idle,
+        .dynamic_animations = NULL,
+        .current_animation = NULL,
+        .timer = NULL,
+        .mutex = NULL,
+        .flag = NULL
+    },
+    [eWs2812b_2] = {
         .led_data = NULL,
         .led_count = 0,
         .led_state = eWs2812bState_Idle,

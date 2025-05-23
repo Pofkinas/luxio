@@ -83,7 +83,7 @@ const static sGpioDesc_t g_static_gpio_lut[eGpioPin_Last] = {
     },
     [eGpioPin_vl53l0_Xshut_1] = {
         .port = GPIOC,
-        .pin = LL_GPIO_PIN_13,
+        .pin = LL_GPIO_PIN_4,
         .mode = LL_GPIO_MODE_OUTPUT,
         .speed = LL_GPIO_SPEED_FREQ_LOW,
         .pull = LL_GPIO_PULL_NO,
@@ -91,9 +91,29 @@ const static sGpioDesc_t g_static_gpio_lut[eGpioPin_Last] = {
         .clock = LL_AHB1_GRP1_PERIPH_GPIOC,
         .alternate = LL_GPIO_AF_0
     },
-    [eGpioPin_Ws2812B] = {
+    [eGpioPin_vl53l0_Xshut_2] = {
+        .port = GPIOC,
+        .pin = LL_GPIO_PIN_5,
+        .mode = LL_GPIO_MODE_OUTPUT,
+        .speed = LL_GPIO_SPEED_FREQ_LOW,
+        .pull = LL_GPIO_PULL_NO,
+        .output = LL_GPIO_OUTPUT_PUSHPULL,
+        .clock = LL_AHB1_GRP1_PERIPH_GPIOC,
+        .alternate = LL_GPIO_AF_0
+    },
+    [eGpioPin_Ws2812B_1] = {
         .port = GPIOA,
         .pin = LL_GPIO_PIN_1,
+        .mode = LL_GPIO_MODE_ALTERNATE,
+        .speed = LL_GPIO_SPEED_FREQ_HIGH,
+        .pull = LL_GPIO_PULL_NO,
+        .output = LL_GPIO_OUTPUT_PUSHPULL,
+        .clock = LL_AHB1_GRP1_PERIPH_GPIOA,
+        .alternate = LL_GPIO_AF_2
+    },
+    [eGpioPin_Ws2812B_2] = {
+        .port = GPIOA,
+        .pin = LL_GPIO_PIN_0,
         .mode = LL_GPIO_MODE_ALTERNATE,
         .speed = LL_GPIO_SPEED_FREQ_HIGH,
         .pull = LL_GPIO_PULL_NO,

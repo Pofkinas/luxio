@@ -13,7 +13,8 @@
  *********************************************************************************************************************/
 
 #define LED_DATA_CHANNELS 3 
-#define WS2812B_1_LED_COUNT 10
+#define WS2812B_1_LED_COUNT 86
+#define WS2812B_2_LED_COUNT 86
 
 /**********************************************************************************************************************
  * Exported types
@@ -23,6 +24,7 @@
 typedef enum eWs2812bDriver {
     eWs2812bDriver_First = 0,
     eWs2812bDriver_1 = eWs2812bDriver_First,
+    eWs2812bDriver_2,
     eWs2812bDriver_Last
 } eWs2812bDriver_t;
 

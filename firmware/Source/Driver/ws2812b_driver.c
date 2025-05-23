@@ -83,9 +83,15 @@ const static uint8_t g_led_order_grb[3] = {1, 0, 2};
 const static sWs2812bStaticDesc_t g_static_ws2812b_lut[eWs2812bDriver_Last] = {
     [eWs2812bDriver_1] = {
         .timer = eTimerDriver_TIM5,
-        .pwm_device = ePwmDevice_Ws2812b,
-        .dma_stream = eDmaDriver_Ws2812b,
+        .pwm_device = ePwmDevice_Ws2812b_1,
+        .dma_stream = eDmaDriver_Ws2812b_1,
         .total_led = WS2812B_1_LED_COUNT
+    },
+    [eWs2812bDriver_2] = {
+        .timer = eTimerDriver_TIM5,
+        .pwm_device = ePwmDevice_Ws2812b_2,
+        .dma_stream = eDmaDriver_Ws2812b_2,
+        .total_led = WS2812B_2_LED_COUNT
     }
 };
 /* clang-format on */
@@ -97,6 +103,18 @@ const static sWs2812bStaticDesc_t g_static_ws2812b_lut[eWs2812bDriver_Last] = {
 /* clang-format off */
 static sWs2812bDynamicDesc_t g_dynamic_ws2812b_lut[eWs2812bDriver_Last] = {
     [eWs2812bDriver_1] = {
+        .is_init = false,
+        .state = eWs2812bDriverState_Idle,
+        .dma_buffer_state = eDmaBuffer_State_Empty,
+        .led_data = NULL,
+        .led_to_set = 0,
+        .processed_led = 0,
+        .sent_led_count = 0,
+        .led_driver_callback = NULL,
+        .high_time = 0,
+        .low_time = 0
+    },
+    [eWs2812bDriver_2] = {
         .is_init = false,
         .state = eWs2812bDriverState_Idle,
         .dma_buffer_state = eDmaBuffer_State_Empty,

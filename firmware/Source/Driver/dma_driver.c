@@ -57,7 +57,7 @@ typedef struct sDmaClearFlags {
 
 /* clang-format off */
 const static sDmaStaticDesc_t g_static_dma_desc_lut[eDmaDriver_Last] = {
-    [eDmaDriver_Ws2812b] = {
+    [eDmaDriver_Ws2812b_1] = {
         .dma = DMA1,
         .enable_clock_fp = LL_AHB1_GRP1_EnableClock,
         .clock = LL_AHB1_GRP1_PERIPH_DMA1,
@@ -72,22 +72,48 @@ const static sDmaStaticDesc_t g_static_dma_desc_lut[eDmaDriver_Last] = {
         .mem_or_dest_size = LL_DMA_MDATAALIGN_WORD,
         .priority_level = LL_DMA_PRIORITY_MEDIUM,
         .fifo_mode_fp = LL_DMA_DisableFifoMode,
+    },
+    [eDmaDriver_Ws2812b_2] = {
+        .dma = DMA1,
+        .enable_clock_fp = LL_AHB1_GRP1_EnableClock,
+        .clock = LL_AHB1_GRP1_PERIPH_DMA1,
+        .nvic = DMA1_Stream2_IRQn,
+        .channel = LL_DMA_CHANNEL_6,
+        .stream = LL_DMA_STREAM_2,
+        .data_direction = LL_DMA_DIRECTION_MEMORY_TO_PERIPH,
+        .mode = LL_DMA_MODE_CIRCULAR,
+        .periph_or_src_increment_mode = LL_DMA_PERIPH_NOINCREMENT,
+        .mem_or_dest_increment_mode = LL_DMA_MEMORY_INCREMENT,
+        .periph_or_src_size = LL_DMA_PDATAALIGN_WORD,
+        .mem_or_dest_size = LL_DMA_MDATAALIGN_WORD,
+        .priority_level = LL_DMA_PRIORITY_MEDIUM,
+        .fifo_mode_fp = LL_DMA_DisableFifoMode,
     }
 };
 
 static sDmaIsActiveFlags_t g_dma_is_active_flags_fp_lut[eDmaDriver_Last] = {
-    [eDmaDriver_Ws2812b] = {
+    [eDmaDriver_Ws2812b_1] = {
         .is_active_tc_flag_fp = LL_DMA_IsActiveFlag_TC4,
         .is_active_ht_flag_fp = LL_DMA_IsActiveFlag_HT4,
         .is_active_te_flag_fp = LL_DMA_IsActiveFlag_TE4
+    },
+    [eDmaDriver_Ws2812b_2] = {
+        .is_active_tc_flag_fp = LL_DMA_IsActiveFlag_TC2,
+        .is_active_ht_flag_fp = LL_DMA_IsActiveFlag_HT2,
+        .is_active_te_flag_fp = LL_DMA_IsActiveFlag_TE2
     }
 };
 
 const static sDmaClearFlags_t g_dma_clear_flags_fp_lut[eDmaDriver_Last] = {
-    [eDmaDriver_Ws2812b] = {
+    [eDmaDriver_Ws2812b_1] = {
         .clear_tc_flag_fp = LL_DMA_ClearFlag_TC4,
         .clear_ht_flag_fp = LL_DMA_ClearFlag_HT4,
         .clear_te_flag_fp = LL_DMA_ClearFlag_TE4
+    },
+    [eDmaDriver_Ws2812b_2] = {
+        .clear_tc_flag_fp = LL_DMA_ClearFlag_TC2,
+        .clear_ht_flag_fp = LL_DMA_ClearFlag_HT2,
+        .clear_te_flag_fp = LL_DMA_ClearFlag_TE2
     }
 };
 /* clang-format on */
@@ -98,7 +124,13 @@ const static sDmaClearFlags_t g_dma_clear_flags_fp_lut[eDmaDriver_Last] = {
 
 /* clang-format off */
 static sDmaDynamicDesc_t g_dynamic_dma_lut[eDmaDriver_Last] = {
-    [eDmaDriver_Ws2812b] = {
+    [eDmaDriver_Ws2812b_1] = {
+        .is_init = false,
+        .periph_or_src_addr = NULL,
+        .mem_or_dest_addr = NULL,
+        .isr_callback = NULL
+    },
+    [eDmaDriver_Ws2812b_2] = {
         .is_init = false,
         .periph_or_src_addr = NULL,
         .mem_or_dest_addr = NULL,
@@ -116,6 +148,7 @@ static sDmaDynamicDesc_t g_dynamic_dma_lut[eDmaDriver_Last] = {
  *********************************************************************************************************************/
 
 static void DMAx_Streamx_ISRHandler(const eDmaDriver_t stream, const eDmaDriver_Flags_t flag);
+void DMA1_Stream2_IRQHandler(void);
 void DMA1_Stream4_IRQHandler(void);
 
 /**********************************************************************************************************************
@@ -142,17 +175,33 @@ static void DMAx_Streamx_ISRHandler(const eDmaDriver_t stream, const eDmaDriver_
     return;
 }
 
+void DMA1_Stream2_IRQHandler(void) {
+    if (LL_DMA_IsActiveFlag_TC2(DMA1)) {
+        DMAx_Streamx_ISRHandler(eDmaDriver_Ws2812b_2, eDmaDriver_Flags_TC);
+    }
+
+    if (LL_DMA_IsActiveFlag_HT2(DMA1)) {
+        DMAx_Streamx_ISRHandler(eDmaDriver_Ws2812b_2, eDmaDriver_Flags_HT);
+    }
+
+    if (LL_DMA_IsActiveFlag_TE2(DMA1)) {
+        DMAx_Streamx_ISRHandler(eDmaDriver_Ws2812b_2, eDmaDriver_Flags_TE);
+    }
+
+    return;
+}
+
 void DMA1_Stream4_IRQHandler(void) {
     if (LL_DMA_IsActiveFlag_TC4(DMA1)) {
-        DMAx_Streamx_ISRHandler(eDmaDriver_Ws2812b, eDmaDriver_Flags_TC);
+        DMAx_Streamx_ISRHandler(eDmaDriver_Ws2812b_1, eDmaDriver_Flags_TC);
     }
 
     if (LL_DMA_IsActiveFlag_HT4(DMA1)) {
-        DMAx_Streamx_ISRHandler(eDmaDriver_Ws2812b, eDmaDriver_Flags_HT);
+        DMAx_Streamx_ISRHandler(eDmaDriver_Ws2812b_1, eDmaDriver_Flags_HT);
     }
 
     if (LL_DMA_IsActiveFlag_TE4(DMA1)) {
-        DMAx_Streamx_ISRHandler(eDmaDriver_Ws2812b, eDmaDriver_Flags_TE);
+        DMAx_Streamx_ISRHandler(eDmaDriver_Ws2812b_1, eDmaDriver_Flags_TE);
     }
 
     return;

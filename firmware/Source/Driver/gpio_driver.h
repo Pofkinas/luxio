@@ -24,7 +24,9 @@ typedef enum eGpioPin {
     eGpioPin_I2c1_SCL,
     eGpioPin_I2c1_SDA,
     eGpioPin_vl53l0_Xshut_1,
-    eGpioPin_Ws2812B,
+    eGpioPin_vl53l0_Xshut_2,
+    eGpioPin_Ws2812B_1,
+    eGpioPin_Ws2812B_2,
     eGpioPin_Last
 } eGpioPin_t;
 /* clang-format on */

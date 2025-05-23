@@ -23,6 +23,7 @@
 typedef enum eWs2812b {
     eWs2812b_First = 0,
     eWs2812b_1 = eWs2812b_First,
+    eWs2812b_2,
     eWs2812b_Last
 } eWs2812b_t;
 

@@ -19,7 +19,8 @@
 /* clang-format off */
 typedef enum eDmaDriver{
     eDmaDriver_First = 0,
-    eDmaDriver_Ws2812b = eDmaDriver_First,
+    eDmaDriver_Ws2812b_1 = eDmaDriver_First,
+    eDmaDriver_Ws2812b_2,
     eDmaDriver_Last
 } eDmaDriver_t;
 

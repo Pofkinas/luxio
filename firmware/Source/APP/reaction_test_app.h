@@ -17,7 +17,7 @@
 
 #define DEFAULT_HAND_OFFSET 50
 #define DEFAULT_DISTANCE_THRESHOLD_MM 10
-#define ACCURACY_SIGMA 5
+#define ACCURACY_SIGMA 100
 
 /**********************************************************************************************************************
  * Exported types
@@ -27,6 +27,7 @@
 typedef enum eModule {
     eModule_First = 0,
     eModule_1 = eModule_First,
+    eModule_2,
     eModule_Last
 } eModule_t;
 
@@ -36,6 +37,7 @@ typedef enum sModuleState {
     eModuleState_Default,
     eModuleState_Active,
     eModuleState_Ready,
+    eModuleState_FailedGetDistance,
     eModuleState_Measuring,
     eModuleState_Registered,
     eModuleState_Last
@@ -78,5 +80,6 @@ bool Reaction_Test_App_StartDelayTimer (const eModule_t module_data, const uint3
 bool Reaction_Test_App_Display (void);
 bool Reaction_Test_WaitForClear (const eModule_t module);
 void Reaction_Test_HandleGameError (eGameError_t error);
+bool Reaction_Test_IsCorrectModule (const eModule_t module);
 
 #endif /* SOURCE_APP_REACTION_TEST_APP_H_ */

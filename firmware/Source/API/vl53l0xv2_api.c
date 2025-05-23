@@ -18,11 +18,8 @@
 
 #define VL53L0X_DEFAULT_ADDRESS 0x29
 #define DEFAULT_STOP_TIMEOUT 100
-
-// #define MIN_DEFAULT_TIMEOUT 100
-// #define MIN_LONG_RANGE_TIMEOUT 100
-// #define MIN_HIGH_ACCURACY_TIMEOUT 300
-// #define MIN_HIGH_SPEED_TIMEOUT 50
+#define DEFAULT_OFFSET_CALIB_DISTANCE_MM 100
+#define DEFAULT_CROSSTALK_CALIB_DISTANCE_MM 200
 
 #define MIN_DEFAULT_TIMEOUT 50
 #define MIN_LONG_RANGE_TIMEOUT 55
@@ -45,6 +42,7 @@ typedef enum eVl53l0xRangeProfile {
 typedef enum eVl53l0xState {
     eVl53l0xState_First = 0,
     eVl53l0xState_Off = eVl53l0xState_First,
+    eVl53l0xState_Init,
     eVl53l0xState_Standby,
     eVl53l0xState_Measuring,
     eVl53l0xState_Last
@@ -53,9 +51,8 @@ typedef enum eVl53l0xState {
 typedef struct sVl53l0xStaticDesc {
     eI2c_t i2c;
     uint8_t i2c_address;
-    int32_t offset;
     uint8_t crosstalk_talk_compensation_en;
-    uint32_t crosstalk_value;
+    FixPoint1616_t crosstalk_talk_distance;
     VL53L0X_DeviceModes device_mode; 
     eGpioPin_t xshut_pin;
     eVl53l0xRangeProfile_t range_profile;
@@ -69,6 +66,8 @@ typedef struct sVl53l0xDynamicDesc {
 	uint8_t calib_isApertureSpads;
     uint8_t calib_VhvSettings;
 	uint8_t calib_PhaseCal;
+    int32_t offset;
+    FixPoint1616_t crosstalk_value;
 } sVl53l0xDynamicDesc_t;
 
 /**********************************************************************************************************************
@@ -81,17 +80,27 @@ CREATE_MODULE_NAME (VL53L0XV2_API)
 CREATE_MODULE_NAME_EMPTY
 #endif
 
+static const FixPoint1616_t g_default_offset_calibration_distance = (uint32_t) DEFAULT_OFFSET_CALIB_DISTANCE_MM * 65536;
+
 /* clang-format off */
 static const sVl53l0xStaticDesc_t g_static_vl53l0x_lut[eVl53l0x_Last] = {
     [eVl53l0x_1] = {
         .i2c = eI2c_1,
         .i2c_address = 0x62,
-        .offset = 0,
         .crosstalk_talk_compensation_en = 0,
-        .crosstalk_value = 0.0f * 65536,
+        .crosstalk_talk_distance = DEFAULT_CROSSTALK_CALIB_DISTANCE_MM * 65536,
         .device_mode = VL53L0X_DEVICEMODE_CONTINUOUS_RANGING,
         .xshut_pin = eGpioPin_vl53l0_Xshut_1,
-        .range_profile = eVl53l0xRangeProfile_Default
+        .range_profile = eVl53l0xRangeProfile_LongRange
+    },
+    [eVl53l0x_2] = {
+        .i2c = eI2c_1,
+        .i2c_address = 0x63,
+        .crosstalk_talk_compensation_en = 0,
+        .crosstalk_talk_distance = DEFAULT_CROSSTALK_CALIB_DISTANCE_MM * 65536,
+        .device_mode = VL53L0X_DEVICEMODE_CONTINUOUS_RANGING,
+        .xshut_pin = eGpioPin_vl53l0_Xshut_2,
+        .range_profile = eVl53l0xRangeProfile_LongRange
     }
 };
 /* clang-format on */
@@ -105,11 +114,22 @@ static sVl53l0xDynamicDesc_t g_dynamic_vl53l0x[eVl53l0x_Last] = {
     [eVl53l0x_1] = {
         .device = {.I2cDevAddr = VL53L0X_DEFAULT_ADDRESS, .comms_type = I2C, .comms_speed_khz = 100},
         .state = eVl53l0xState_Off,
-        .has_calib_default_data = false,
-        .calib_SpadCount = 0,
+        .has_calib_default_data = true,
+        .calib_SpadCount = 5,
         .calib_isApertureSpads = 0,
-        .calib_VhvSettings = 0,
-        .calib_PhaseCal = 0
+        .calib_VhvSettings = 28,
+        .calib_PhaseCal = 1,
+        .offset = 92000,
+    },
+    [eVl53l0x_2] = {
+        .device = {.I2cDevAddr = VL53L0X_DEFAULT_ADDRESS, .comms_type = I2C, .comms_speed_khz = 100},
+        .state = eVl53l0xState_Off,
+        .has_calib_default_data = true,
+        .calib_SpadCount = 5,
+        .calib_isApertureSpads = 0,
+        .calib_VhvSettings = 28,
+        .calib_PhaseCal = 1,
+        .offset = 92000,
     }
 };
 /* clang-format on */
@@ -122,7 +142,8 @@ static sVl53l0xDynamicDesc_t g_dynamic_vl53l0x[eVl53l0x_Last] = {
  * Prototypes of private functions
  *********************************************************************************************************************/
 
-static bool VL53L0X_API_InitDevice (const eVl53l0x_t vl53l0x); 
+static bool VL53L0X_API_InitDevice (const eVl53l0x_t vl53l0x);
+static bool VL53L0X_API_ConfigureDevice (const eVl53l0x_t vl53l0x);
 static bool VL53L0X_API_SetRangeProfile (const eVl53l0x_t vl53l0x, const eVl53l0xRangeProfile_t profile);
 static bool VL53L0X_API_IsCorrectDevice (const eVl53l0x_t vl53l0x);
 
@@ -147,7 +168,7 @@ static bool VL53L0X_API_InitDevice (const eVl53l0x_t vl53l0x) {
         return false;
     }
 
-    osDelay(5);
+    osDelay(10);
 
     if (VL53L0X_DataInit(&g_dynamic_vl53l0x[vl53l0x].device) != VL53L0X_ERROR_NONE) {
         TRACE_ERR("VL53L0X_DataInit failed\n");
@@ -167,6 +188,22 @@ static bool VL53L0X_API_InitDevice (const eVl53l0x_t vl53l0x) {
         return false;
     }
 
+    g_dynamic_vl53l0x[vl53l0x].state = eVl53l0xState_Init;
+
+    return true;
+}
+
+static bool VL53L0X_API_ConfigureDevice (const eVl53l0x_t vl53l0x) {
+    // TODO: Make calib settings save to flash
+
+    if (!VL53L0X_API_IsCorrectDevice(vl53l0x)) {
+        return false;
+    }
+
+    if (g_dynamic_vl53l0x[vl53l0x].state != eVl53l0xState_Init) {
+        return false;
+    }
+    
     if (!g_dynamic_vl53l0x[vl53l0x].has_calib_default_data) {
         if (VL53L0X_PerformRefSpadManagement(&g_dynamic_vl53l0x[vl53l0x].device, &g_dynamic_vl53l0x[vl53l0x].calib_SpadCount, &g_dynamic_vl53l0x[vl53l0x].calib_isApertureSpads) != VL53L0X_ERROR_NONE) {
             TRACE_ERR("VL53L0X_PerformRefSpadManagement failed\n");
@@ -180,9 +217,17 @@ static bool VL53L0X_API_InitDevice (const eVl53l0x_t vl53l0x) {
             return false;
         }
 
-        g_dynamic_vl53l0x[vl53l0x].has_calib_default_data = true;
-    }
+        if (VL53L0X_PerformOffsetCalibration(&g_dynamic_vl53l0x[vl53l0x].device, g_default_offset_calibration_distance, &g_dynamic_vl53l0x[vl53l0x].offset) != VL53L0X_ERROR_NONE) {
+            TRACE_ERR("VL53L0X_PerformOffsetCalibration failed\n");
+            
+            return false;
+        }
 
+        if (g_static_vl53l0x_lut[vl53l0x].crosstalk_talk_compensation_en) {
+            VL53L0X_PerformXTalkCalibration(&g_dynamic_vl53l0x[vl53l0x].device, g_static_vl53l0x_lut[vl53l0x].crosstalk_talk_distance, &g_dynamic_vl53l0x[vl53l0x].crosstalk_value);
+        
+        }
+    }
 
     if (VL53L0X_SetReferenceSpads(&g_dynamic_vl53l0x[vl53l0x].device, g_dynamic_vl53l0x[vl53l0x].calib_SpadCount, g_dynamic_vl53l0x[vl53l0x].calib_isApertureSpads) != VL53L0X_ERROR_NONE) {
         TRACE_ERR("VL53L0X_SetReferenceSpads failed\n");
@@ -196,14 +241,14 @@ static bool VL53L0X_API_InitDevice (const eVl53l0x_t vl53l0x) {
         return false;
     }
 
-    if (VL53L0X_SetOffsetCalibrationDataMicroMeter(&g_dynamic_vl53l0x[vl53l0x].device, g_static_vl53l0x_lut[vl53l0x].offset) != VL53L0X_ERROR_NONE) {
+    if (VL53L0X_SetOffsetCalibrationDataMicroMeter(&g_dynamic_vl53l0x[vl53l0x].device, g_dynamic_vl53l0x[vl53l0x].offset) != VL53L0X_ERROR_NONE) {
         TRACE_ERR("VL53L0X_SetOffsetCalibrationDataMicroMeter failed\n");
         
         return false;
     }
 
     if (g_static_vl53l0x_lut[vl53l0x].crosstalk_talk_compensation_en) {
-        if (VL53L0X_SetXTalkCompensationRateMegaCps(&g_dynamic_vl53l0x[vl53l0x].device, g_static_vl53l0x_lut[vl53l0x].crosstalk_value) != VL53L0X_ERROR_NONE) {
+        if (VL53L0X_SetXTalkCompensationRateMegaCps(&g_dynamic_vl53l0x[vl53l0x].device, g_dynamic_vl53l0x[vl53l0x].crosstalk_value) != VL53L0X_ERROR_NONE) {
             TRACE_ERR("VL53L0X_SetXTalkCompensationRateMegaCps failed\n");
             
             return false;
@@ -319,6 +364,12 @@ bool VL53L0X_API_InitAll (void) {
 
     for (eVl53l0x_t vl53l0x = eVl53l0x_First; vl53l0x < eVl53l0x_Last; vl53l0x++) {
         if (!VL53L0X_API_InitDevice(vl53l0x)) {
+            return false;
+        }
+    }
+
+    for (eVl53l0x_t vl53l0x = eVl53l0x_First; vl53l0x < eVl53l0x_Last; vl53l0x++) {
+        if (!VL53L0X_API_ConfigureDevice(vl53l0x)) {
             return false;
         }
     }

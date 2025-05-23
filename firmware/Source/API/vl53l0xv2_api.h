@@ -19,6 +19,7 @@
 typedef enum eVl53l0x {
     eVl53l0x_First = 0,
     eVl53l0x_1 = eVl53l0x_First,
+    eVl53l0x_2,
     eVl53l0x_Last
 } eVl53l0x_t;
 
