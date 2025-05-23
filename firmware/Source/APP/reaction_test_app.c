@@ -15,6 +15,7 @@
 #include "led_color.h"
 #include "math_utils.h"
 #include "message.h"
+#include "system_config.h"
 
 #include "game_mode_classic.h"
 
@@ -28,12 +29,16 @@
 
 #define DISPLAY_MESSAGE_SIZE 64
 #define SINGLE_SEGMENT_LENGTH_MM 17
-#define DEFAULT_LED_BRIGHTNESS 32
-#define DEFAULT_MEASURE_TIMEOUT 200
+#define DEFAULT_LED_BRIGHTNESS 8
+#define DEFAULT_GET_DISTANCE_TIMEOUT 100
+#define WAIT_CLEAR_TIME 3000
+#define ERROR_LED_COLOR eLedColor_Red
+#define DEFAULT_MEASURE_TIMEOUT_FLAG 0x04U
 
 #define DEFAULT_ATTEMPTS 5
 #define DEFAULT_TARGET_LED_COUNT 5
 #define DEFAULT_DIFFICULTY 1
+#define DEFAULT_MEASURE_TIMEOUT 5000
 
 /**********************************************************************************************************************
  * Private typedef
@@ -94,12 +99,19 @@ CREATE_MODULE_NAME_EMPTY
 /* clang-format off */ 
 const static osThreadAttr_t g_reaction_test_thread_attributes = {
     .name = "Reaction_Test_Thread",
-    .stack_size = 256 * 8,
+    .stack_size = 256 * 12,
     .priority = (osPriority_t) osPriorityNormal
 };
 
 const static osEventFlagsAttr_t g_start_button_event_attributes = {
     .name = "Start_Button_Event",
+    .attr_bits = 0,
+    .cb_mem = NULL,
+    .cb_size = 0
+};
+
+const static osTimerAttr_t g_measure_timeout_timer_attributes = {
+    .name = "Measure_Timeout_Timer",
     .attr_bits = 0,
     .cb_mem = NULL,
     .cb_size = 0
@@ -123,6 +135,7 @@ const static sReactionTestDesc_t g_static_reaction_test_desc[eModule_Last] = {
  
 static bool g_is_initialized = false;
 static osThreadId_t g_reaction_test_thread_id = NULL;
+static osTimerId_t g_measure_timeout_timer = NULL;
 static osEventFlagsId_t g_start_button_event = NULL;
 
 static osEventFlagsId_t g_timer_flag = NULL;
@@ -166,6 +179,8 @@ static sReactionTestDynamicDesc_t g_dynamic_reaction_test_desc[eModule_Last] = {
 static void Reaction_Test_Thread (void* arg);
 static bool Reaction_Test_InitModules (void);
 static void Reaction_Test_DelayStartTimer (void *arg);
+static void Reaction_Test_MeasureTimeoutTimer (void *arg);
+static bool Reaction_Test_IsModuleClear (const eModule_t module);
 static bool Reaction_Test_IsCorrectModule (const eModule_t module);
 
 /**********************************************************************************************************************
@@ -173,11 +188,18 @@ static bool Reaction_Test_IsCorrectModule (const eModule_t module);
  *********************************************************************************************************************/
  
 static void Reaction_Test_Thread (void* arg) {
-    if (VL53L0X_API_Init(eVl53l0x_1)) {
+    if (VL53L0X_API_InitAll()) {
         g_reaction_test_state = eReactionTestState_Init;
+    } else {
+        TRACE_ERR("Failed to init vl53l0x\n");
     }
     
     while (true) {
+        if (g_reaction_test_state == eReactionTestState_Off) {
+            TRACE_ERR("Reaction Test Thread terminated\n");
+            osThreadTerminate(g_reaction_test_thread_id);
+        }
+
         if (g_reaction_test_state != eReactionTestState_Init) {
             if (osEventFlagsWait(g_start_button_event, BUTTON_TRIGGERED_EVENT, osFlagsWaitAny, 0U) == BUTTON_TRIGGERED_EVENT) {
                 TRACE_INFO("Stop reaction test\n");
@@ -188,8 +210,22 @@ static void Reaction_Test_Thread (void* arg) {
         
         switch (g_reaction_test_state) {
             case eReactionTestState_Init: {
+                if (osEventFlagsWait(g_timer_flag, DEFAULT_MEASURE_TIMEOUT_FLAG, osFlagsWaitAny, 0U) == DEFAULT_MEASURE_TIMEOUT_FLAG) {
+                    TRACE_ERR("Measure timeout\n");
+                    
+                    Reaction_Test_HandleGameError(eGameError_MeasureTimeout);
+                }
+
+                if (g_game_mode_instance.game_mode_data != NULL) {
+                    Heap_API_Free(g_game_mode_instance.game_mode_data);
+                }
+
+                if (osTimerIsRunning(g_measure_timeout_timer)) {
+                    osTimerStop(g_measure_timeout_timer);
+                }
+                
                 if (!Reaction_Test_InitModules()) {
-                    TRACE_ERR("Failed to init reaction test\n");
+                    //TRACE_ERR("Failed to init reaction test\n");
 
                     g_reaction_test_state = eReactionTestState_Off;
 
@@ -209,7 +245,7 @@ static void Reaction_Test_Thread (void* arg) {
                         sGameModeClassic_t *data = Heap_API_Calloc(1, sizeof(sGameModeClassic_t));
                         
                         if (data == NULL) {
-                            TRACE_ERR("Failed to alloc memory for game mode data\n");
+                            TRACE_ERR("Failed alloc memory for game mode data\n");
 
                             g_reaction_test_state = eReactionTestState_Init;
                             
@@ -226,6 +262,7 @@ static void Reaction_Test_Thread (void* arg) {
                         g_game_mode_instance.game_mode_process = Game_Mode_Classic_Process;
                         g_game_mode_instance.game_mode_is_restart = Game_Mode_Classic_IsRestart;
                         g_game_mode_instance.game_mode_stop = Game_Mode_Classic_Stop;
+                        g_game_mode_instance.game_mode_reset = Game_Mode_Classic_Reset;
                         g_game_mode_instance.get_active_modules = Game_Mode_Classic_GetActiveModules;
                     } break;
                     default: {
@@ -240,7 +277,9 @@ static void Reaction_Test_Thread (void* arg) {
                 g_reaction_test_state = eReactionTestState_Start;
             }
             case eReactionTestState_Start: {
-                g_game_mode_instance.game_mode_start(g_game_mode_instance.game_mode_data);
+                if (!g_game_mode_instance.game_mode_start(g_game_mode_instance.game_mode_data)) {
+                    break;
+                }
 
                 g_active_modules = g_game_mode_instance.get_active_modules(&g_active_modules_count);
 
@@ -260,33 +299,35 @@ static void Reaction_Test_Thread (void* arg) {
                 uint8_t registered_modules = 0;
 
                 for (uint8_t module = 0; module < g_active_modules_count; module++) {
-                    if (g_dynamic_reaction_test_desc[g_active_modules[module]].state != eModuleState_Active) {
+                    if (g_dynamic_reaction_test_desc[g_active_modules[module]].state == eModuleState_Ready) {
                         if (osEventFlagsWait(g_timer_flag, g_dynamic_reaction_test_desc[module].timer_event_flag, osFlagsWaitAny, 0U) == g_dynamic_reaction_test_desc[module].timer_event_flag) {
                             if (!WS2812B_API_Start(g_static_reaction_test_desc[module].ws2812b)) {
-                                TRACE_ERR("Failed to start animation on [%d] module\n", module);
-                        
-                                g_reaction_test_state = eReactionTestState_Init;
-                        
-                                return;
-                            }
-
-                            if (!VL53L0X_API_Enable(g_static_reaction_test_desc[module].vl53l0x)) {
-                                TRACE_ERR("Failed to enable vl53l0 on [%d] module\n", module);
+                                //TRACE_ERR("Failed to start animation on [%d] module\n", module);
                         
                                 g_reaction_test_state = eReactionTestState_Init;
                         
                                 return;
                             }
                         
-                            g_dynamic_reaction_test_desc[module].state = eModuleState_Active;
-                        
+                            g_dynamic_reaction_test_desc[module].state = eModuleState_Measuring;
                             g_dynamic_reaction_test_desc[module].start_time = osKernelGetTickCount();
+
+                            continue;
                         }
-                        
+
+                        if (!Reaction_Test_IsModuleClear(module)) {                        
+                            Reaction_Test_HandleGameError(eGameError_InvalidStart);
+                            g_reaction_test_state = eReactionTestState_Init;
+                    
+                            break;
+                        }
+                    } 
+
+                    if (g_dynamic_reaction_test_desc[g_active_modules[module]].state != eModuleState_Measuring) {
                         continue;
                     }
 
-                    if (!VL53L0X_API_GetDistance(g_static_reaction_test_desc[g_active_modules[module]].vl53l0x, &g_dynamic_reaction_test_desc[g_active_modules[module]].registerd_distance, DEFAULT_MEASURE_TIMEOUT)) {
+                    if (!VL53L0X_API_GetDistance(g_static_reaction_test_desc[g_active_modules[module]].vl53l0x, &g_dynamic_reaction_test_desc[g_active_modules[module]].registerd_distance, DEFAULT_GET_DISTANCE_TIMEOUT)) {
                         continue;
                     }
 
@@ -295,8 +336,6 @@ static void Reaction_Test_Thread (void* arg) {
                     }
 
                     g_dynamic_reaction_test_desc[g_active_modules[module]].end_time = osKernelGetTickCount();
-                    g_active_modules--;
-
                     g_dynamic_reaction_test_desc[g_active_modules[module]].state = eModuleState_Registered;
 
                     registered_modules++;
@@ -309,7 +348,13 @@ static void Reaction_Test_Thread (void* arg) {
                 g_reaction_test_state = eReactionTestState_Process;
             } break;
             case eReactionTestState_Process: {
+                osTimerStop(g_measure_timeout_timer);
+
                 for (uint8_t module = 0; module < g_active_modules_count; module++) {
+                    if (g_dynamic_reaction_test_desc[g_active_modules[module]].state != eModuleState_Registered) {
+                        continue;
+                    }
+                    
                     switch (g_game_mode) {
                         case eGameMode_Classic: {
                             sGameModeClassic_t *data = (sGameModeClassic_t*) g_game_mode_instance.game_mode_data;
@@ -335,9 +380,12 @@ static void Reaction_Test_Thread (void* arg) {
             case eReactionTestState_End: {
                 if (g_game_mode_instance.game_mode_is_restart(g_game_mode_instance.game_mode_data)) {
                     g_reaction_test_state = eReactionTestState_Start;
+
+                    break;
                 } 
 
                 g_game_mode_instance.game_mode_stop(g_game_mode_instance.game_mode_data);
+                g_game_mode_instance.game_mode_reset(g_game_mode_instance.game_mode_data);
 
                 if (g_game_mode_instance.game_mode_data != NULL) {
                     Heap_API_Free(g_game_mode_instance.game_mode_data);
@@ -359,9 +407,14 @@ static bool Reaction_Test_InitModules (void) {
 
     for (eModule_t module = eModule_First; module < eModule_Last; module++) {
         g_dynamic_reaction_test_desc[module].registerd_distance = 0;
-        
         g_dynamic_reaction_test_desc[module].state = eModuleState_Off;
         
+        if (osTimerIsRunning(g_dynamic_reaction_test_desc[module].segment_timer)) {
+            if (osTimerStop(g_dynamic_reaction_test_desc[module].segment_timer) != osOK) {
+                TRACE_ERR("Failed to stop timer on [%d] module\n", module);
+            }
+        }
+
         if (!WS2812B_API_Reset(g_static_reaction_test_desc[module].ws2812b)) {
             TRACE_ERR("Failed to init [%d] module: WS2812B API Reset failed\n", module);
 
@@ -370,13 +423,13 @@ static bool Reaction_Test_InitModules (void) {
             break;
         }
         
-        if (!VL53L0X_API_Disable(g_static_reaction_test_desc[module].vl53l0x)) {
-            TRACE_ERR("Failed to set default [%d] module: VL53L0X API Disable failed\n", module);
-            
-            is_init_successful = false;
-            
-            return false;
-        }
+       if (!VL53L0X_API_StopMeasuring(g_static_reaction_test_desc[module].vl53l0x)) {
+           TRACE_ERR("Failed to init [%d] module: VL53L0X API Disable failed\n", module);
+
+           is_init_successful = false;
+
+           return false;
+       }
     }
 
     return is_init_successful;
@@ -398,12 +451,12 @@ static void Reaction_Test_DelayStartTimer (void *arg) {
     }
 
     if (g_reaction_test_state != eReactionTestState_Measure) {
-        TRACE_ERR("Failed timer: Incorrect FSM state[d]\n", g_reaction_test_state);
+        TRACE_ERR("Failed timer: Incorrect FSM state[%d]\n", g_reaction_test_state);
 
         return;
     }
 
-    if (module->state != eModuleState_Default) {
+    if (module->state != eModuleState_Ready) {
         TRACE_ERR("Failed timer: Module [%d] state [%d] incorrect\n", module->module, module->state);
 
         g_reaction_test_state = eReactionTestState_Init;
@@ -416,7 +469,7 @@ static void Reaction_Test_DelayStartTimer (void *arg) {
     g_led_animation.data = &g_dynamic_reaction_test_desc[module->module].led_segment_fill; 
 
     if (!WS2812B_API_AddAnimation(&g_led_animation)) {
-        TRACE_ERR("Failed to add animation to [%d] module\n", module->module);
+        //TRACE_ERR("Failed to add animation to [%d] module\n", module->module);
 
         g_reaction_test_state = eReactionTestState_Init;
 
@@ -425,7 +478,44 @@ static void Reaction_Test_DelayStartTimer (void *arg) {
 
     osEventFlagsSet(g_timer_flag, module->timer_event_flag);
 
+    if (osTimerStart(g_measure_timeout_timer, DEFAULT_MEASURE_TIMEOUT) != osOK) {
+        TRACE_ERR("Failed to start measure timeout timer\n");
+
+        g_reaction_test_state = eReactionTestState_Init;
+    }
+
     return;
+}
+
+static void Reaction_Test_MeasureTimeoutTimer (void *arg) {
+    if (g_reaction_test_state == eReactionTestState_Measure) {
+        g_reaction_test_state = eReactionTestState_Init;
+
+        //Reaction_Test_HandleGameError(eGameError_MeasureTimeout);
+
+        osEventFlagsSet(g_timer_flag, DEFAULT_MEASURE_TIMEOUT_FLAG);
+    }
+
+    return;
+}
+
+static bool Reaction_Test_IsModuleClear (const eModule_t module) {
+    if (!Reaction_Test_IsCorrectModule(module)) {
+        TRACE_ERR("Failed to check module [%d] state: Incorrect Module\n", module);
+
+        return false;
+    }
+    if ((g_dynamic_reaction_test_desc[module].state == eModuleState_Off) || (g_dynamic_reaction_test_desc[module].state == eModuleState_Default)) {
+        TRACE_ERR("Failed to check module [%d] state: Module state [%d]\n", module, g_dynamic_reaction_test_desc[module].state);
+
+        return false;
+    }
+
+    if (!VL53L0X_API_GetDistance(g_static_reaction_test_desc[module].vl53l0x, &g_dynamic_reaction_test_desc[module].registerd_distance, DEFAULT_GET_DISTANCE_TIMEOUT)) {
+        return (g_dynamic_reaction_test_desc[module].registerd_distance == 0);
+    } else {
+        return (g_dynamic_reaction_test_desc[module].registerd_distance > g_dynamic_reaction_test_desc[module].led_strip_length);
+    }
 }
 
 static bool Reaction_Test_IsCorrectModule (const eModule_t module) {
@@ -484,6 +574,10 @@ bool Reaction_Test_App_Init (void) {
     if (g_timer_flag == NULL) {
         g_timer_flag = osEventFlagsNew(&g_start_button_event_attributes);
     }
+
+    if (g_measure_timeout_timer == NULL) {
+        g_measure_timeout_timer = osTimerNew(Reaction_Test_MeasureTimeoutTimer, osTimerOnce, NULL, &g_measure_timeout_timer_attributes);
+    }
     
     g_is_initialized = true;
 
@@ -523,8 +617,14 @@ bool Reaction_Test_App_SetRandomTargetPossition (const eModule_t module_data) {
 
     uint32_t distance = start_led * SINGLE_SEGMENT_LENGTH_MM + (g_dynamic_reaction_test_desc[module_data].target_led_count / 2) * SINGLE_SEGMENT_LENGTH_MM;
 
+    if (distance < DEFAULT_HAND_OFFSET) {
+        distance = DEFAULT_HAND_OFFSET / 2;
+    } else {
+        distance -= DEFAULT_HAND_OFFSET;
+    }
+
     g_dynamic_reaction_test_desc[module_data].led_segment_fill.segment_start_led = start_led;
-    g_dynamic_reaction_test_desc[module_data].led_segment_fill.segment_end_led = start_led + g_dynamic_reaction_test_desc[module_data].target_led_count;
+    g_dynamic_reaction_test_desc[module_data].led_segment_fill.segment_end_led = start_led + (g_dynamic_reaction_test_desc[module_data].target_led_count - 1);
     g_dynamic_reaction_test_desc[module_data].target_distance = distance;
 
     return true;
@@ -540,27 +640,58 @@ uint16_t Reaction_Test_App_GetTargetDistanceMm (const eModule_t module_data) {
     return g_dynamic_reaction_test_desc[module_data].target_distance;
 }
 
-bool Reaction_Test_App_ActiveteModule (const eModule_t module_data) {
+bool Reaction_Test_App_ActiveteModule (const eModule_t module_data, const sModuleState_t state) {
     if (!Reaction_Test_IsCorrectModule(module_data)) {
         TRACE_ERR("Failed to activate [%d] module: Incorrect Module\n", module_data);
 
         return false;
     }
 
+    if ((state < eModuleState_First) || (state >= eModuleState_Last) || (state == eModuleState_Off)) {
+        TRACE_ERR("Failed to activate [%d] module: Incorrect state [%d]\n", module_data, state);
+
+        return false;
+    }
+
+    if (g_dynamic_reaction_test_desc[module_data].state == state) {
+        return true;
+    }
+
     g_led_animation.device = g_static_reaction_test_desc[module_data].ws2812b;
     g_led_animation.animation = eLedAnimation_SolidColor;
-    g_led_animation.data = &g_dynamic_reaction_test_desc[module_data].led_solid_color; 
+    g_led_animation.data = &g_dynamic_reaction_test_desc[module_data].led_solid_color;
 
     if (!WS2812B_API_AddAnimation(&g_led_animation)) {
-        TRACE_ERR("Failed to activate [%d] module: WS2812B API Add Animation failed\n", module_data);
+        //TRACE_ERR("Failed to activate [%d] module: WS2812B API Add Animation failed\n", module_data);
 
         return false;
     }
 
     if (!WS2812B_API_Start(g_static_reaction_test_desc[module_data].ws2812b)) {
-        TRACE_ERR("Failed to activate [%d] module: WS2812B API Start failed\n", module_data);
+        //TRACE_ERR("Failed to activate [%d] module: WS2812B API Start failed\n", module_data);
 
         return false;
+    }
+
+    switch (state) {
+        case eModuleState_Default: {
+            g_dynamic_reaction_test_desc[module_data].state = eModuleState_Default;
+        } break;
+        case eModuleState_Active: {
+            if (!VL53L0X_API_StartMeasuring(g_static_reaction_test_desc[module_data].vl53l0x)) {
+                //TRACE_ERR("Failed to enable vl53l0 on [%d] module\n", module);
+        
+                g_reaction_test_state = eReactionTestState_Init;
+        
+                return false;
+            }
+
+            g_dynamic_reaction_test_desc[module_data].state = eModuleState_Active;
+        } break;
+
+        default: {
+            break;
+        }
     }
 
     return true;
@@ -600,4 +731,88 @@ bool Reaction_Test_App_Display (void) {
     g_display_message[0] = '\0';
 
     return true;
+}
+
+bool Reaction_Test_WaitForClear (const eModule_t module) {
+    if (!Reaction_Test_IsCorrectModule(module)) {
+        TRACE_ERR("Failed to wait for clear: Incorrect Module\n");
+
+        return false;
+    }
+
+    if (g_dynamic_reaction_test_desc[module].state != eModuleState_Active) {
+        TRACE_ERR("Failed to wait for clear: Module [%d] state [%d] incorrect\n", module, g_dynamic_reaction_test_desc[module].state);
+        
+        return false;
+    }
+
+    uint32_t start_time = osKernelGetSysTimerCount();
+    uint32_t timeout = WAIT_CLEAR_TIME * SYSTEM_MS_TICS;
+
+    while ((osKernelGetSysTimerCount() - start_time) < timeout) {
+        if (Reaction_Test_IsModuleClear(module)) {
+            g_dynamic_reaction_test_desc[module].state = eModuleState_Ready;
+
+            return true;
+        }
+
+        osDelay(5);
+    }
+
+    TRACE_ERR("Failed to wait for clear: Timeout\n");
+    
+    return false;
+}
+
+void Reaction_Test_HandleGameError (eGameError_t error) {
+    if ((error < eGameError_First) || (error >= eGameError_Last)) {
+        TRACE_ERR("Failed to handle game error: Incorrect error code\n");
+
+        return;
+    }
+
+    if (osTimerIsRunning(g_measure_timeout_timer)) {
+        osTimerStop(g_measure_timeout_timer);
+    }
+
+    // TODO: Make leds blink
+
+    g_led_animation.animation = eLedAnimation_SolidColor;
+
+    sLedAnimationSolidColor_t led_error = {0};
+    led_error.rgb = LED_GetColorRgb(ERROR_LED_COLOR);
+    g_led_animation.data = &led_error;
+
+    for (eModule_t module = eModule_First; module < eModule_Last; module++) {
+        if (osTimerIsRunning(g_dynamic_reaction_test_desc[module].segment_timer)) {
+            if (osTimerStop(g_dynamic_reaction_test_desc[module].segment_timer) != osOK) {
+                TRACE_ERR("Failed to stop timer on [%d] module\n", module);
+            }
+        }
+
+        g_led_animation.device = g_static_reaction_test_desc[module].ws2812b;
+
+        if (!WS2812B_API_AddAnimation(&g_led_animation)) {
+            //TRACE_ERR("Failed to activate [%d] module: WS2812B API Add Animation failed\n", module_data);
+    
+            return;
+        }
+    
+        if (!WS2812B_API_Start(g_static_reaction_test_desc[module].ws2812b)) {
+            //TRACE_ERR("Failed to activate [%d] module: WS2812B API Start failed\n", module_data);
+    
+            return;
+        }
+    }
+
+    g_game_mode_instance.game_mode_reset(g_game_mode_instance.game_mode_data);
+
+    snprintf(g_message.data, g_message.size, "Game Error [%d]\n", error);
+    Reaction_Test_App_Display();
+
+    g_reaction_test_state = eReactionTestState_Init;
+
+    osDelay(5000);
+
+    return;
 }

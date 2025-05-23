@@ -44,7 +44,7 @@ CREATE_MODULE_NAME_EMPTY
  * Private variables
  *********************************************************************************************************************/
  
-static eModule_t *g_active_modules = NULL;
+static eModule_t *g_active_modules_index = NULL;
 static uint8_t g_active_modules_count = 0;
 
 /**********************************************************************************************************************
@@ -63,9 +63,9 @@ static uint8_t g_active_modules_count = 0;
  * Definitions of exported functions
  *********************************************************************************************************************/
 
-void Game_Mode_Classic_Start (void *context) {
+bool Game_Mode_Classic_Start (void *context) {
     if (context == NULL) {
-        return;
+        return false;
     }
 
     sGameModeClassic_t *game_mode = (sGameModeClassic_t *) context;
@@ -73,7 +73,7 @@ void Game_Mode_Classic_Start (void *context) {
     if (game_mode->difficulty > eModule_Last) {
         TRACE_ERR("Game mode difficulty [%d] is greater than max difficulty [%d]\n", game_mode->difficulty, eModule_Last);
 
-        return;
+        return false;
     }
 
     if (game_mode->game_mode_data == NULL) {
@@ -81,17 +81,17 @@ void Game_Mode_Classic_Start (void *context) {
     }
 
     if (game_mode->game_mode_data == NULL) {
-        return;
+        return false;
     }
 
     sGameModeClassicData_t *data = (sGameModeClassicData_t*) game_mode->game_mode_data;
 
-    if (g_active_modules == NULL) {
-        g_active_modules = Heap_API_Calloc(game_mode->difficulty, sizeof(eModule_t));
+    if (g_active_modules_index == NULL) {
+        g_active_modules_index = Heap_API_Calloc(game_mode->difficulty, sizeof(eModule_t));
     }
     
-    if (g_active_modules == NULL) {
-        return;
+    if (g_active_modules_index == NULL) {
+        return false;
     }
 
     uint8_t active_modules = 0;
@@ -113,32 +113,50 @@ void Game_Mode_Classic_Start (void *context) {
 
         data->target_distance = Reaction_Test_App_GetTargetDistanceMm(module_index);
         
-        g_active_modules[game_mode->difficulty - active_modules] = module_index;
+        g_active_modules_index[game_mode->difficulty - active_modules] = module_index;
 
-        uint32_t start_delay = Math_Utils_RandomRange(MIN_START_DELAY, MAX_START_DELAY);
+        if (!Reaction_Test_App_ActiveteModule(module_index, eModuleState_Active)) {
+            TRACE_ERR("Failed to active [%d] module\n", module_index);
 
-        if (!Reaction_Test_App_StartDelayTimer(module_index, start_delay)) {
             continue;
+        }
+
+        if (!Reaction_Test_WaitForClear(module_index)) {
+            Reaction_Test_HandleGameError(eGameError_ClearStripTimeout);
+
+            return false;
         }
 
         active_modules --;
     }
 
-    for (eModule_t module = eModule_First; module < eModule_Last; module++) {
-        if (Reaction_Test_App_GetModuleState(module) == eModuleState_Off) {       
-            if (!Reaction_Test_App_ActiveteModule(module)) {
-                TRACE_ERR("Failed to active [%d] module\n", module);
-    
-                continue;
-            }
+    sModuleState_t state;
 
-            if (!Reaction_Test_App_UpdateModuleState(module, eModuleState_Default)) {
-                continue;
+    for (eModule_t module = eModule_First; module < eModule_Last; module++) {
+        state = Reaction_Test_App_GetModuleState(module);
+
+        switch (state) {
+            case eModuleState_Off: {
+                if (!Reaction_Test_App_ActiveteModule(module, eModuleState_Default)) {
+                    TRACE_ERR("Failed to active [%d] module\n", module);
+
+                    return false;
+                }
+            } break;
+            case eModuleState_Ready: {
+                uint32_t start_delay = Math_Utils_RandomRange(MIN_START_DELAY, MAX_START_DELAY);
+
+                if (!Reaction_Test_App_StartDelayTimer(module, start_delay)) {
+                    return false;
+                }
+            } break;
+            default: {
+                break;
             }
         }
     }
 
-    return;
+    return true;
 }
 
 void Game_Mode_Classic_Process (void *context) {
@@ -153,7 +171,7 @@ void Game_Mode_Classic_Process (void *context) {
         return;
     }
 
-    data->current_reaction_time = (game_mode->end_time - game_mode->start_time) / SYSTEM_MS_TICS;
+    data->current_reaction_time = (game_mode->end_time - game_mode->start_time);
 
     uint32_t spacial_error = abs(data->target_distance - game_mode->registerd_distance);
 
@@ -166,7 +184,7 @@ void Game_Mode_Classic_Process (void *context) {
     data->average_accuracy += data->current_accuracy;
     data->average_reaction_time += data->current_reaction_time;
 
-    snprintf(game_mode->display_message.data, game_mode->display_message.size, "Module [%d]: Reaction Time: %d ms, Accuracy: %d\n", g_active_modules[game_mode->difficulty], data->current_reaction_time, data->current_accuracy);
+    snprintf(game_mode->display_message.data, game_mode->display_message.size, "Time: %d ms, Target: %d mm, Reg: %d mm, Acc: %d\n", data->current_reaction_time, data->target_distance, game_mode->registerd_distance, data->current_accuracy);
 
     Reaction_Test_App_Display();
 
@@ -183,7 +201,7 @@ bool Game_Mode_Classic_IsRestart (void *context) {
 
     data->attempt++;
 
-    return (data->attempt <= game_mode->total_attempts);
+    return (data->attempt < game_mode->total_attempts);
 }
 
 void Game_Mode_Classic_Stop (void *context) {
@@ -207,15 +225,24 @@ void Game_Mode_Classic_Stop (void *context) {
     snprintf(game_mode->display_message.data, game_mode->display_message.size, "Average accuracy: %d\n", data->average_accuracy);
     Reaction_Test_App_Display();
 
+    return;
+}
+
+void Game_Mode_Classic_Reset (void *context) {
+    if (context == NULL) {
+        return;
+    }
+
+    sGameModeClassic_t *game_mode = (sGameModeClassic_t *) context;
 
     if (game_mode->game_mode_data != NULL) {
         Heap_API_Free(game_mode->game_mode_data);
         game_mode->game_mode_data = NULL;
     }
 
-    if (g_active_modules != NULL) {
-        Heap_API_Free(g_active_modules);
-        g_active_modules = NULL;
+    if (g_active_modules_index != NULL) {
+        Heap_API_Free(g_active_modules_index);
+        g_active_modules_index = NULL;
     }
 
     return;
@@ -226,7 +253,7 @@ eModule_t *Game_Mode_Classic_GetActiveModules (uint8_t *active_modules_count) {
         return NULL;
     }
 
-    if (g_active_modules == NULL) {
+    if (g_active_modules_index == NULL) {
         *active_modules_count = 0;
 
         return NULL;
@@ -234,5 +261,5 @@ eModule_t *Game_Mode_Classic_GetActiveModules (uint8_t *active_modules_count) {
 
     *active_modules_count = g_active_modules_count; 
     
-    return g_active_modules;
+    return g_active_modules_index;
 }

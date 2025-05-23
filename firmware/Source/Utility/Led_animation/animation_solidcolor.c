@@ -52,8 +52,6 @@ void Animation_SolidColor_FillBuffer (sSolidAnimationData_t *data) {
     uint8_t g = (data->rgb.color >> 8) & 0xFF;
     uint8_t b = data->rgb.color & 0xFF;
 
-    LED_ScaleBrightness(r, data->brightness);
-
     r = LED_ScaleBrightness(r, data->brightness);
     g = LED_ScaleBrightness(g, data->brightness);
     b = LED_ScaleBrightness(b, data->brightness);

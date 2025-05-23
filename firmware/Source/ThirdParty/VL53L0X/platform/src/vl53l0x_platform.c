@@ -123,7 +123,7 @@ VL53L0X_Error VL53L0X_WriteMulti(VL53L0X_DEV Dev, uint8_t index, uint8_t *pdata,
 
 	deviceAddress = Dev->I2cDevAddr;
 
-	status_int = (uint8_t) I2C_API_Write(IC2_PHERIPH, deviceAddress, pdata, count, index, sizeof(index), VL53L0X_I2C_WRITE_TIMEOUT);
+	status_int = (uint8_t) I2C_API_Write(IC2_PHERIPH, deviceAddress, pdata, count, index, sizeof(index), VL53L0X_I2C_WRITE_TIMEOUT * count);
     
 	if (status_int != 1)
 		Status = VL53L0X_ERROR_CONTROL_INTERFACE;
@@ -146,7 +146,7 @@ VL53L0X_Error VL53L0X_ReadMulti(VL53L0X_DEV Dev, uint8_t index, uint8_t *pdata, 
 
     deviceAddress = Dev->I2cDevAddr;
 
-	status_int = (uint8_t) I2C_API_Read(IC2_PHERIPH, deviceAddress, Buffer, count, index, sizeof(index), VL53L0X_I2C_READ_TIMEOUT);
+	status_int = (uint8_t) I2C_API_Read(IC2_PHERIPH, deviceAddress, Buffer, count, index, sizeof(index), VL53L0X_I2C_READ_TIMEOUT * count);
 
 	if (status_int != 1)
 		return VL53L0X_ERROR_CONTROL_INTERFACE;

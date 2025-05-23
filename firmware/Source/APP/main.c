@@ -17,8 +17,6 @@
 #include "debug_api.h"
 #include "timer_driver.h"
 
-#include "vl53l0xv2_api.h"
-
 /**********************************************************************************************************************
  * Private definitions and macros
  *********************************************************************************************************************/
@@ -39,20 +37,9 @@ CREATE_MODULE_NAME (MAIN)
 CREATE_MODULE_NAME_EMPTY
 #endif
 
-const static osThreadAttr_t g_main_thread_attributes = {
-    .name = "Main_Test_Thread",
-    .stack_size = 128 * 16,
-    .priority = (osPriority_t) osPriorityNormal
-};
-
 /**********************************************************************************************************************
  * Private variables
  *********************************************************************************************************************/
-
-static osThreadId_t g_test_thread_id = NULL;
-static bool g_is_test_thread_init = false;
-
-static bool g_is_vl53l0x_init = false;
 
 /**********************************************************************************************************************
  * Exported variables and references
@@ -70,8 +57,6 @@ void configureTimerForRunTimeStats (void);
 void TIM1_UP_TIM10_IRQnHandler (void);
 
 unsigned long getRunTimeCounterValue (void);
-
-static void Main_Test_Thread (void* arg);
 
 /**********************************************************************************************************************
  * Definitions of private functions
@@ -144,9 +129,6 @@ int main (void) {
 
     CLI_APP_Init(eUartBaudrate_115200);
     Reaction_Test_App_Init();
-    
-    // Init test thread
-    //g_test_thread_id = osThreadNew(Main_Test_Thread, NULL, &g_main_thread_attributes);
 
     TRACE_INFO("Start OK\n");
 
@@ -161,36 +143,3 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
         HAL_IncTick();
     }
 }
-
-/**********************************************************************************************************************
- * Testing Thread
- *********************************************************************************************************************/
-
-static void Main_Test_Thread(void* arg) {
-    if (!g_is_test_thread_init) {
-        // for (uint8_t addr = 1; addr < 255; addr++) {
-        //         if (I2C_API_Write(eI2c_1, addr, NULL, 0, 0, 0, 1000)) {
-        //             TRACE_INFO("Found I2C device at 0x%02X\n", addr);
-        //         }
-
-        //         osDelay(1);
-        // }
-
-
-        VL53L0X_API_Init(eVl53l0x_1);
-        VL53L0X_API_Enable(eVl53l0x_1);
-
-        g_is_test_thread_init = true;
-    }
-
-    uint16_t distance = 0;
-
-    while (1) {
-        if (VL53L0X_API_GetDistance(eVl53l0x_1, &distance, 1000)) {
-            TRACE_INFO("Distance: %d mm\n", distance);
-        }
-
-        osThreadYield();
-    }
-}
- 

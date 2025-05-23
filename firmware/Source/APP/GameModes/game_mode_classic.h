@@ -37,11 +37,12 @@ typedef struct sGameModeClassic {
  * Prototypes of exported functions
  *********************************************************************************************************************/
 
-void Game_Mode_Classic_Start (void *context);
+bool Game_Mode_Classic_Start (void *context);
 void Game_Mode_Classic_Process (void *context);
 void Game_Mode_Classic_Results (void *context);
 bool Game_Mode_Classic_IsRestart (void *context);
 void Game_Mode_Classic_Stop (void *context);
+void Game_Mode_Classic_Reset (void *context);
 eModule_t *Game_Mode_Classic_GetActiveModules (uint8_t *active_modules_count);
  
 #endif /* SOURCE_APP_GAMEMODES_GAME_MODE_CLASSIC_H_ */

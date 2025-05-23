@@ -15,7 +15,8 @@
 #define MIN_START_DELAY 500
 #define MAX_START_DELAY 5000
 
-#define DEFAULT_DISTANCE_THRESHOLD_MM 20
+#define DEFAULT_HAND_OFFSET 50
+#define DEFAULT_DISTANCE_THRESHOLD_MM 10
 #define ACCURACY_SIGMA 5
 
 /**********************************************************************************************************************
@@ -34,16 +35,27 @@ typedef enum sModuleState {
     eModuleState_Off = eModuleState_First,
     eModuleState_Default,
     eModuleState_Active,
+    eModuleState_Ready,
+    eModuleState_Measuring,
     eModuleState_Registered,
     eModuleState_Last
 } sModuleState_t;
 
+typedef enum eGameError {
+    eGameError_First = 0,
+    eGameError_ClearStripTimeout = eGameError_First,
+    eGameError_InvalidStart,
+    eGameError_MeasureTimeout,
+    eGameError_Last
+} eGameError_t;
+
 typedef struct sGameModeInstance {
     void *game_mode_data;
-    void (*game_mode_start)(void *context);
+    bool (*game_mode_start)(void *context);
     void (*game_mode_process)(void *context);
     bool (*game_mode_is_restart)(void *context);
     void (*game_mode_stop)(void *context);
+    void (*game_mode_reset)(void *context);
     eModule_t* (*get_active_modules)(uint8_t *active_modules_count);
 } sGameModeInstance_t;
 /* clang-format on */
@@ -61,8 +73,10 @@ sModuleState_t Reaction_Test_App_GetModuleState (const eModule_t module);
 bool Reaction_Test_App_UpdateModuleState (const eModule_t module, const sModuleState_t state);
 bool Reaction_Test_App_SetRandomTargetPossition (const eModule_t module_data);
 uint16_t Reaction_Test_App_GetTargetDistanceMm (const eModule_t module_data);
-bool Reaction_Test_App_ActiveteModule (const eModule_t module_data);
+bool Reaction_Test_App_ActiveteModule (const eModule_t module_data, const sModuleState_t state);
 bool Reaction_Test_App_StartDelayTimer (const eModule_t module_data, const uint32_t delay);
 bool Reaction_Test_App_Display (void);
+bool Reaction_Test_WaitForClear (const eModule_t module);
+void Reaction_Test_HandleGameError (eGameError_t error);
 
 #endif /* SOURCE_APP_REACTION_TEST_APP_H_ */

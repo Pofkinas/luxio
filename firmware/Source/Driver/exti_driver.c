@@ -29,6 +29,7 @@ typedef struct sExtiDesc {
 
 typedef struct sExtiDynamic {
     bool is_init;
+    bool is_exti_enabled;
     void (*callback) (void *context);
     void *callback_context;
 } sExtiDynamic_t;
@@ -60,6 +61,7 @@ const static sExtiDesc_t g_static_exti_lut[eExtiDriver_Last] = {
 static sExtiDynamic_t g_dynamic_exti_lut[eExtiDriver_Last] = {
     [eExtiDriver_StartButton] = {
         .is_init = false,
+        .is_exti_enabled = false,
         .callback = NULL,
         .callback_context = NULL,
     }
@@ -154,6 +156,8 @@ bool Exti_Driver_Disable_IT (const eExtiDriver_t exti_device) {
 
     LL_EXTI_DisableIT_0_31(g_static_exti_lut[exti_device].line_0_31);
 
+    g_dynamic_exti_lut[exti_device].is_exti_enabled = false;
+
     return true;
 }
 
@@ -163,6 +167,8 @@ bool Exti_Driver_Enable_IT (const eExtiDriver_t exti_device) {
     }
 
     LL_EXTI_EnableIT_0_31(g_static_exti_lut[exti_device].line_0_31);
+
+    g_dynamic_exti_lut[exti_device].is_exti_enabled = true;
 
     return true;
 }

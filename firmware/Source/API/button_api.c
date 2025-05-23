@@ -4,12 +4,15 @@
 
 #include "button_api.h"
 #include <stdio.h>
+#include "debug_api.h"
 #include "exti_driver.h"
 #include "gpio_driver.h"
 
 /**********************************************************************************************************************
  * Private definitions and macros
  *********************************************************************************************************************/
+
+//#define DEBUG_BUTTON_API
 
 #define MESSAGE_QUEUE_PRIORITY 0U
 #define MESSAGE_QUEUE_TIMEOUT 5U
@@ -50,6 +53,12 @@ typedef struct sButtonDynamic {
 /**********************************************************************************************************************
  * Private constants
  *********************************************************************************************************************/
+
+#ifdef DEBUG_BUTTON_API
+CREATE_MODULE_NAME (BUTTON_API)
+#else
+CREATE_MODULE_NAME_EMPTY
+#endif
 
 const static osThreadAttr_t g_button_thread_attributes = {
     .name = "Button_Thread",
@@ -124,6 +133,8 @@ static void Button_API_Thread (void *arg) {
         if (osMessageQueueGet(g_button_message_queue_id, &button, MESSAGE_QUEUE_PRIORITY, MESSAGE_QUEUE_TIMEOUT) == osOK) {    
             if (g_static_button_desc_lut[button].is_debounce_enable) {
                 Button_API_StartDebounceTimer(button);
+
+                TRACE_INFO("Button [%d] Debounce triggered\n", button);
             }
         }
 
@@ -147,6 +158,8 @@ static void Button_API_Thread (void *arg) {
             if (g_static_button_desc_lut[button].is_debounce_enable) {
                 Button_API_StartDebounceTimer(button);
             } else {
+                TRACE_INFO("Button [%d] triggered\n", button);
+
                 osEventFlagsSet(g_dynamic_button_lut[button].callback_flag, BUTTON_TRIGGERED_EVENT);
             }
         }
@@ -172,33 +185,47 @@ static void Button_API_ExtiTriggered (void *context) {
 
 static void Button_API_DebounceTimerCallback (void *context) {
     sButtonDynamic_t *debounce_button = (sButtonDynamic_t*) context;
+    bool debounce_status = true;
 
     if (debounce_button->debounce_state != eButtonState_Debounce) {
+        TRACE_WRN("Debounce callback exited early, state [%d]\n", debounce_button->debounce_state);
+        
         return;
+    }
+
+    if (!GPIO_Driver_ReadPin(g_static_button_desc_lut[debounce_button->button].gpio_pin, &debounce_button->button_value)) {
+        debounce_status = false;
+    }
+
+    if (debounce_button->button_value != g_static_button_desc_lut[debounce_button->button].active_state) {
+        debounce_status = false;
+    }
+
+    if (osMutexAcquire(debounce_button->button_mutex, MUTEX_TIMEOUT) != osOK) {
+        debounce_status = false;
     }
 
     if (g_static_button_desc_lut[debounce_button->button].is_exti) {
         if (!Exti_Driver_ClearFlag(g_static_button_desc_lut[debounce_button->button].exti_device)) {
-            return;
+            debounce_status = false;
         }
 
         Exti_Driver_Enable_IT(g_static_button_desc_lut[debounce_button->button].exti_device);
     }
 
-    if (!GPIO_Driver_ReadPin(g_static_button_desc_lut[debounce_button->button].gpio_pin, &debounce_button->button_value)) {
+    debounce_button->debounce_state = eButtonState_Init;
+
+    if (!debounce_status) {  
+        osMutexRelease(debounce_button->button_mutex);
+
+        TRACE_WRN("Button [%d] debounce failed\n", debounce_button->button);
+
         return;
     }
 
-    if (debounce_button->button_value != g_static_button_desc_lut[debounce_button->button].active_state) {
-        return;
-    }
-
-    if (osMutexAcquire(debounce_button->button_mutex, MUTEX_TIMEOUT) != osOK) {
-        return;
-    }
+    TRACE_INFO("Button [%d] triggered\n", debounce_button->button);
 
     osEventFlagsSet(debounce_button->callback_flag, BUTTON_TRIGGERED_EVENT);
-    debounce_button->debounce_state = eButtonState_Init;
 
     osMutexRelease(debounce_button->button_mutex);
 

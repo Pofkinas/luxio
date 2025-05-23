@@ -35,6 +35,7 @@ typedef enum eI2cDriver_Flags {
     eI2cDriver_Flags_Rxne,
     eI2cDriver_Flags_AckFailure,
     eI2cDriver_Flags_BusError,
+    eI2cDriver_Flags_BusReset,
     eI2cDriver_Flags_Last
 } eI2cDriver_Flags_t;
 /* clang-format on */
