@@ -3,6 +3,7 @@
  *********************************************************************************************************************/
 
 #include "main.h"
+#include "system_config.h"
 #include "cmsis_os.h"
 #include "FreeRTOSConfig.h"
 #include "stm32f4xx_ll_rcc.h"
@@ -12,6 +13,7 @@
 #include "stm32f4xx_ll_usart.h"
 #include "usart.h"
 #include "cli_app.h"
+#include "reaction_test_app.h"
 #include "debug_api.h"
 #include "timer_driver.h"
 
@@ -79,7 +81,7 @@ static void SystemClock_Config (void) {
     LL_RCC_SetSysClkSource(LL_RCC_SYS_CLKSOURCE_PLL);
 
     while(LL_RCC_GetSysClkSource() != LL_RCC_SYS_CLKSOURCE_STATUS_PLL) {}
-    LL_SetSystemCoreClock(100000000);
+    LL_SetSystemCoreClock(SYSTEM_CLOCK);
 
     if (HAL_InitTick (TICK_INT_PRIORITY) != HAL_OK) {
         __disable_irq();
@@ -126,6 +128,7 @@ int main (void) {
     Timer_Driver_Start(eTimerDriver_TIM10);
 
     CLI_APP_Init(eUartBaudrate_115200);
+    Reaction_Test_App_Init();
 
     TRACE_INFO("Start OK\n");
 

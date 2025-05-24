@@ -1,30 +1,27 @@
-#ifndef SOURCE_APP_CLI_APP_H_
-#define SOURCE_APP_CLI_APP_H_
+#ifndef SOURCE_UTILITY_LED_ANIMATION_ANIMATION_SOLIDCOLOR_H_
+#define SOURCE_UTILITY_LED_ANIMATION_ANIMATION_SOLIDCOLOR_H_
 /**********************************************************************************************************************
  * Includes
  *********************************************************************************************************************/
 
-#include <stdbool.h>
-#include "uart_baudrate.h"
-#include "message.h"
+#include <stdint.h>
+#include "ws2812b_api.h"
+#include "led_color.h"
 
 /**********************************************************************************************************************
  * Exported definitions and macros
  *********************************************************************************************************************/
 
-#define CLI_COMMAND_MESSAGE_CAPACITY 20
-
 /**********************************************************************************************************************
  * Exported types
  *********************************************************************************************************************/
 
-/* clang-format off */
-typedef enum eCliCommand {
-    eCliCommand_First = 0,
-    eCliCommand_RgbToHsv = eCliCommand_First,
-    eCliCommand_HsvToRgb,
-    eCliCommand_Last
-} eCliCommand_t;
+/* clang-format off */ 
+typedef struct sSolidAnimationData {
+    eWs2812b_t device;
+    uint8_t brightness;
+    sLedColorRgb_t rgb;
+} sSolidAnimationData_t;
 /* clang-format on */
 
 /**********************************************************************************************************************
@@ -35,6 +32,6 @@ typedef enum eCliCommand {
  * Prototypes of exported functions
  *********************************************************************************************************************/
 
-bool CLI_APP_Init (const eUartBaudrate_t baudrate);
+void Animation_SolidColor_Run (void *context);
 
-#endif /* SOURCE_APP_CLI_APP_H_ */
+#endif /* SOURCE_UTILITY_LED_ANIMATION_ANIMATION_SOLIDCOLOR_H_ */

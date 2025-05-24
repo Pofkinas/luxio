@@ -42,10 +42,10 @@ typedef struct sPwmOcChannelDesc {
 
 /* clang-format off */
 const static sPwmOcChannelDesc_t g_static_pwm_lut[ePwmDevice_Last] = {
-    [ePwmDevice_Ws2812b] = {
+    [ePwmDevice_Ws2812b_1] = {
         .periph = TIM5,
         .timer = eTimerDriver_TIM5,
-        .gpio_pin = eGpioPin_Ws2812B,
+        .gpio_pin = eGpioPin_Ws2812B_1,
         .channel = LL_TIM_CHANNEL_CH2,
         .mode = LL_TIM_OCMODE_PWM1,
         .oc_state = LL_TIM_OCSTATE_ENABLE,
@@ -61,6 +61,26 @@ const static sPwmOcChannelDesc_t g_static_pwm_lut[ePwmDevice_Last] = {
         .is_dma_request_enabled = true,
         .dma_request_fp = LL_TIM_EnableDMAReq_CC2,
         .get_ccr_fp = LL_TIM_OC_GetCompareCH2
+    },
+    [ePwmDevice_Ws2812b_2] = {
+        .periph = TIM5,
+        .timer = eTimerDriver_TIM5,
+        .gpio_pin = eGpioPin_Ws2812B_2,
+        .channel = LL_TIM_CHANNEL_CH1,
+        .mode = LL_TIM_OCMODE_PWM1,
+        .oc_state = LL_TIM_OCSTATE_ENABLE,
+        .ocn_state = LL_TIM_OCSTATE_DISABLE,
+        .compare_value = 0,
+        .oc_polarity = LL_TIM_OCPOLARITY_HIGH,
+        .ocn_polarity = LL_TIM_OCPOLARITY_HIGH,
+        .oc_idle = LL_TIM_OCIDLESTATE_LOW,
+        .ocn_idle = LL_TIM_OCIDLESTATE_LOW,
+        .fast_mode_fp = LL_TIM_OC_DisableFast,
+        .compare_preload_fp = LL_TIM_OC_EnablePreload,
+        .compare_value_fp = LL_TIM_OC_SetCompareCH1,
+        .is_dma_request_enabled = true,
+        .dma_request_fp = LL_TIM_EnableDMAReq_CC1,
+        .get_ccr_fp = LL_TIM_OC_GetCompareCH1
     }
 };
 /* clang-format on */
@@ -73,7 +93,8 @@ static bool g_is_all_device_init = false;
 
 /* clang-format off */
 static bool g_is_device_enabled[ePwmDevice_Last] = {
-    [ePwmDevice_Ws2812b] = false
+    [ePwmDevice_Ws2812b_1] = false,
+    [ePwmDevice_Ws2812b_2] = false
 };
 /* clang-format on */
 

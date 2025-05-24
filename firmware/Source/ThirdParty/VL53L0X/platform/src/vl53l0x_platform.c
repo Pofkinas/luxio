@@ -94,8 +94,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define VL53L0X_GetI2CAccess(Dev)    /* todo mutex acquire */
 #define VL53L0X_DoneI2CAcces(Dev)    /* todo mutex release */
 
-#define VL53L0X_I2C_WRITE_TIMEOUT_US 5500   /* 5.5ms */
-#define VL53L0X_I2C_READ_TIMEOUT_US  5500   /* 5.5ms */
+#define VL53L0X_I2C_WRITE_TIMEOUT 2
+#define VL53L0X_I2C_READ_TIMEOUT 2
 #define IC2_PHERIPH eI2c_1
 
 VL53L0X_Error VL53L0X_LockSequenceAccess(VL53L0X_DEV Dev){
@@ -123,7 +123,7 @@ VL53L0X_Error VL53L0X_WriteMulti(VL53L0X_DEV Dev, uint8_t index, uint8_t *pdata,
 
 	deviceAddress = Dev->I2cDevAddr;
 
-	status_int = (uint8_t) I2C_API_Write(IC2_PHERIPH, deviceAddress, pdata, count, index, sizeof(index), VL53L0X_I2C_WRITE_TIMEOUT_US * count);
+	status_int = (uint8_t) I2C_API_Write(IC2_PHERIPH, deviceAddress, pdata, count, index, sizeof(index), VL53L0X_I2C_WRITE_TIMEOUT * count);
     
 	if (status_int != 1)
 		Status = VL53L0X_ERROR_CONTROL_INTERFACE;
@@ -146,7 +146,7 @@ VL53L0X_Error VL53L0X_ReadMulti(VL53L0X_DEV Dev, uint8_t index, uint8_t *pdata, 
 
     deviceAddress = Dev->I2cDevAddr;
 
-	status_int = (uint8_t) I2C_API_Read(IC2_PHERIPH, deviceAddress, Buffer, count, index, sizeof(index), VL53L0X_I2C_READ_TIMEOUT_US * count);
+	status_int = (uint8_t) I2C_API_Read(IC2_PHERIPH, deviceAddress, Buffer, count, index, sizeof(index), VL53L0X_I2C_READ_TIMEOUT * count);
 
 	if (status_int != 1)
 		return VL53L0X_ERROR_CONTROL_INTERFACE;

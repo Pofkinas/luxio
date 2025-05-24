@@ -1,30 +1,39 @@
-#ifndef SOURCE_APP_CLI_APP_H_
-#define SOURCE_APP_CLI_APP_H_
+#ifndef SOURCE_UTILITY_LED_ANIMATION_ANIMATION_RAINBOW_H_
+#define SOURCE_UTILITY_LED_ANIMATION_ANIMATION_RAINBOW_H_
 /**********************************************************************************************************************
  * Includes
  *********************************************************************************************************************/
 
-#include <stdbool.h>
-#include "uart_baudrate.h"
-#include "message.h"
+#include <stdint.h>
+#include <stddef.h>
+#include "ws2812b_api.h"
+#include "led_color.h"
 
 /**********************************************************************************************************************
  * Exported definitions and macros
  *********************************************************************************************************************/
-
-#define CLI_COMMAND_MESSAGE_CAPACITY 20
 
 /**********************************************************************************************************************
  * Exported types
  *********************************************************************************************************************/
 
 /* clang-format off */
-typedef enum eCliCommand {
-    eCliCommand_First = 0,
-    eCliCommand_RgbToHsv = eCliCommand_First,
-    eCliCommand_HsvToRgb,
-    eCliCommand_Last
-} eCliCommand_t;
+typedef enum eRainbowState {
+    eRainbowState_First = 0,
+    eRainbowState_Init = eRainbowState_First,
+    eRainbowState_Run,
+    eRainbowState_Last
+} eRainbowState_t;
+
+typedef struct sLedRainbow {
+    eWs2812b_t device;
+    uint8_t brightness;
+    eRainbowState_t state;
+    sLedAnimationRainbow_t *parameters;
+    
+    size_t frame_counter;
+    uint8_t hue_offset;
+} sLedRainbow_t;
 /* clang-format on */
 
 /**********************************************************************************************************************
@@ -35,6 +44,8 @@ typedef enum eCliCommand {
  * Prototypes of exported functions
  *********************************************************************************************************************/
 
-bool CLI_APP_Init (const eUartBaudrate_t baudrate);
+void Animation_Rainbow_Run (void *context);
+void Animation_Rainbow_Free (void *context);
+bool Animation_Rainbow_IsCorrectSpeed (const uint8_t speed);
 
-#endif /* SOURCE_APP_CLI_APP_H_ */
+#endif /* SOURCE_UTILITY_LED_ANIMATION_ANIMATION_RAINBOW_H_ */

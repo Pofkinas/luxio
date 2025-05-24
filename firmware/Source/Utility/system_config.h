@@ -1,31 +1,19 @@
-#ifndef SOURCE_APP_CLI_APP_H_
-#define SOURCE_APP_CLI_APP_H_
+#ifndef SOURCE_UTILITY_SYSTEM_H_
+#define SOURCE_UTILITY_SYSTEM_H_
 /**********************************************************************************************************************
  * Includes
  *********************************************************************************************************************/
-
-#include <stdbool.h>
-#include "uart_baudrate.h"
-#include "message.h"
 
 /**********************************************************************************************************************
  * Exported definitions and macros
  *********************************************************************************************************************/
 
-#define CLI_COMMAND_MESSAGE_CAPACITY 20
+#define SYSTEM_CLOCK 100000000
+#define SYSTEM_MS_TICS (SYSTEM_CLOCK / 1000)
 
 /**********************************************************************************************************************
  * Exported types
  *********************************************************************************************************************/
-
-/* clang-format off */
-typedef enum eCliCommand {
-    eCliCommand_First = 0,
-    eCliCommand_RgbToHsv = eCliCommand_First,
-    eCliCommand_HsvToRgb,
-    eCliCommand_Last
-} eCliCommand_t;
-/* clang-format on */
 
 /**********************************************************************************************************************
  * Exported variables
@@ -35,6 +23,4 @@ typedef enum eCliCommand {
  * Prototypes of exported functions
  *********************************************************************************************************************/
 
-bool CLI_APP_Init (const eUartBaudrate_t baudrate);
-
-#endif /* SOURCE_APP_CLI_APP_H_ */
+#endif /* SOURCE_UTILITY_SYSTEM_H_ */

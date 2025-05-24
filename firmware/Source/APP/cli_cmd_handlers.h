@@ -23,4 +23,7 @@
  * Prototypes of exported functions
  *********************************************************************************************************************/
 
+bool CLI_APP_Led_Handlers_RgbToHsv (sMessage_t arguments, sMessage_t *response);
+bool CLI_APP_Led_Handlers_HsvToRgb (sMessage_t arguments, sMessage_t *response);
+
 #endif /* SOURCE_APP_CLI_APP_HANDLERS_H_ */

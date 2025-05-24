@@ -19,6 +19,7 @@
 typedef enum eVl53l0x {
     eVl53l0x_First = 0,
     eVl53l0x_1 = eVl53l0x_First,
+    eVl53l0x_2,
     eVl53l0x_Last
 } eVl53l0x_t;
 
@@ -30,9 +31,11 @@ typedef enum eVl53l0x {
  * Prototypes of exported functions
  *********************************************************************************************************************/
 
-bool VL53L0X_API_Init (const eVl53l0x_t vl53l0x);
-bool VL53L0X_API_Enable (const eVl53l0x_t vl53l0x);
-bool VL53L0X_API_Disable (const eVl53l0x_t vl53l0x);
+bool VL53L0X_API_InitAll (void);
+bool VL53L0X_API_StartMeasuring (const eVl53l0x_t vl53l0x);
+bool VL53L0X_API_StopMeasuring (const eVl53l0x_t vl53l0x);
+bool VL53L0X_API_TurnOff (const eVl53l0x_t vl53l0x);
+bool VL53L0X_API_TurnOn (const eVl53l0x_t vl53l0x);
 bool VL53L0X_API_GetDistance (const eVl53l0x_t vl53l0x, uint16_t *distance, size_t timeout);
 
 #endif /* SOURCE_API_VL53L0XV2_API_H_ */

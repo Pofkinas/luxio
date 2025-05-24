@@ -19,7 +19,8 @@
 /* clang-format off */
 typedef enum ePwmDevice {
     ePwmDevice_First = 0,
-    ePwmDevice_Ws2812b = ePwmDevice_First,
+    ePwmDevice_Ws2812b_1 = ePwmDevice_First,
+    ePwmDevice_Ws2812b_2,
     ePwmDevice_Last
 } ePwmDevice_t;
 /* clang-format on */

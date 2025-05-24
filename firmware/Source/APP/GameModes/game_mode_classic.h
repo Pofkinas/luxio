@@ -1,32 +1,34 @@
-#ifndef SOURCE_APP_CLI_APP_H_
-#define SOURCE_APP_CLI_APP_H_
+#ifndef SOURCE_APP_GAMEMODES_GAME_MODE_CLASSIC_H_
+#define SOURCE_APP_GAMEMODES_GAME_MODE_CLASSIC_H_
 /**********************************************************************************************************************
  * Includes
  *********************************************************************************************************************/
 
 #include <stdbool.h>
-#include "uart_baudrate.h"
+#include <stdint.h>
+#include "reaction_test_app.h"
 #include "message.h"
 
 /**********************************************************************************************************************
  * Exported definitions and macros
  *********************************************************************************************************************/
 
-#define CLI_COMMAND_MESSAGE_CAPACITY 20
-
 /**********************************************************************************************************************
  * Exported types
  *********************************************************************************************************************/
 
 /* clang-format off */
-typedef enum eCliCommand {
-    eCliCommand_First = 0,
-    eCliCommand_RgbToHsv = eCliCommand_First,
-    eCliCommand_HsvToRgb,
-    eCliCommand_Last
-} eCliCommand_t;
+typedef struct sGameModeClassic {
+    sMessage_t display_message;
+    uint8_t difficulty;
+    uint8_t total_attempts;
+    uint32_t start_time;
+    uint32_t end_time;
+    uint16_t registerd_distance;
+    void *game_mode_data;
+} sGameModeClassic_t;
 /* clang-format on */
-
+ 
 /**********************************************************************************************************************
  * Exported variables
  *********************************************************************************************************************/
@@ -35,6 +37,12 @@ typedef enum eCliCommand {
  * Prototypes of exported functions
  *********************************************************************************************************************/
 
-bool CLI_APP_Init (const eUartBaudrate_t baudrate);
-
-#endif /* SOURCE_APP_CLI_APP_H_ */
+bool Game_Mode_Classic_Start (void *context);
+void Game_Mode_Classic_Process (void *context);
+void Game_Mode_Classic_Results (void *context);
+bool Game_Mode_Classic_IsRestart (void *context);
+void Game_Mode_Classic_Stop (void *context);
+void Game_Mode_Classic_Reset (void *context);
+eModule_t *Game_Mode_Classic_GetActiveModules (uint8_t *active_modules_count);
+ 
+#endif /* SOURCE_APP_GAMEMODES_GAME_MODE_CLASSIC_H_ */
