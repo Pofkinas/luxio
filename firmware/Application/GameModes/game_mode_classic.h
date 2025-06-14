@@ -7,7 +7,6 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include "reaction_test_app.h"
-#include "message.h"
 
 /**********************************************************************************************************************
  * Exported definitions and macros
@@ -19,7 +18,6 @@
 
 /* clang-format off */
 typedef struct sGameModeClassic {
-    sMessage_t display_message;
     uint8_t difficulty;
     uint8_t total_attempts;
     uint32_t start_time;

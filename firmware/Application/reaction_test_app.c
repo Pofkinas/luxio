@@ -26,8 +26,7 @@
 #define DEBUG_REACTION_TEST_APP
 
 #define START_STOP_BUTTON eIo_StartStopButton
-
-#define DISPLAY_MESSAGE_SIZE 64
+#define LCD_DISPLAY eLcd_1
 
 #define SINGLE_SEGMENT_LENGTH_UM 16670
 #define DEFAULT_LED_BRIGHTNESS 192
@@ -35,7 +34,7 @@
 #define WAIT_CLEAR_TIME 3000
 #define ERROR_LED_COLOR eLedColor_Red
 #define DEFAULT_MEASURE_TIMEOUT_FLAG 0x04U
-#define WAIT_BETWEEN_ATTEMPTS 2000
+#define WAIT_BETWEEN_ATTEMPTS 3000
 
 #define DEFAULT_ATTEMPTS 5
 #define DEFAULT_TARGET_LED_COUNT 5
@@ -154,8 +153,7 @@ static eReactionTestState_t g_reaction_test_state = eReactionTestState_Off;
 static eGameMode_t g_game_mode = eGameMode_Classic;
 static sGameModeInstance_t g_game_mode_instance;
 static sLedAnimationDesc_t g_led_animation = {.brightness = DEFAULT_LED_BRIGHTNESS};
-static char g_display_message[DISPLAY_MESSAGE_SIZE];
-static sMessage_t g_message = {.data = g_display_message, .size = DISPLAY_MESSAGE_SIZE};
+static sMessage_t g_message = {0};
 
 static eModule_t *g_active_modules;
 static uint8_t g_active_modules_count = 0;
@@ -208,9 +206,11 @@ static sModuleState_t Reaction_Test_IsModuleClear (const eModule_t module);
  
 static void Reaction_Test_Thread (void* arg) {
     if (VL53L0X_API_InitAll()) {
-        g_reaction_test_state = eReactionTestState_Init;
+        if (LCD_API_InitAllLcd()) {
+            g_reaction_test_state = eReactionTestState_Init;
+        }
     } else {
-        TRACE_ERR("Failed to init vl53l0x\n");
+        TRACE_ERR("Failed to init\n");
     }
     
     while (true) {
@@ -251,6 +251,18 @@ static void Reaction_Test_Thread (void* arg) {
                     break;
                 }
                 
+                LCD_API_Clear(LCD_DISPLAY);
+
+                g_message.data = "Reaction Test";
+                g_message.size = strlen(g_message.data);
+
+                LCD_API_Print(LCD_DISPLAY, &g_message, eLcdRow_1, eLcdColumn_2, eLcdOption_None);
+
+                g_message.data = "- Press  START -";
+                g_message.size = strlen(g_message.data);
+
+                LCD_API_Print(LCD_DISPLAY, &g_message, eLcdRow_2, eLcdColumn_1, eLcdOption_None);
+
                 if (osEventFlagsWait(g_start_button_event, STARTSTOP_TRIGGERED_EVENT, osFlagsWaitAny, osWaitForever) != STARTSTOP_TRIGGERED_EVENT) {
                     TRACE_ERR("Failed to to receive start button flag\n");
                     
@@ -273,8 +285,6 @@ static void Reaction_Test_Thread (void* arg) {
 
                         data->difficulty = g_difficulty;
                         data->total_attempts = g_total_attempts;
-                        data->display_message.data = g_display_message;
-                        data->display_message.size = sizeof(g_display_message);
 
                         g_game_mode_instance.game_mode_data = data;
                         g_game_mode_instance.game_mode_start = Game_Mode_Classic_Start;
@@ -305,6 +315,12 @@ static void Reaction_Test_Thread (void* arg) {
                 if (g_active_modules == NULL) {
                     TRACE_ERR("Failed to get active modules\n");
 
+                    g_reaction_test_state = eReactionTestState_Init;
+
+                    break;
+                }
+
+                if (!LCD_API_Clear(LCD_DISPLAY)) {
                     g_reaction_test_state = eReactionTestState_Init;
 
                     break;
@@ -413,6 +429,8 @@ static void Reaction_Test_Thread (void* arg) {
                 if (g_game_mode_instance.game_mode_data != NULL) {
                     Heap_API_Free(g_game_mode_instance.game_mode_data);
                 }
+
+                osDelay(WAIT_BETWEEN_ATTEMPTS);
 
                 g_reaction_test_state = eReactionTestState_Init;
             } break;
@@ -749,10 +767,18 @@ bool Reaction_Test_App_StartDelayTimer (const eModule_t module_data, const uint3
     return true;
 }
 
-bool Reaction_Test_App_Display (void) {
-    TRACE_INFO(g_message.data);
+bool Reaction_Test_App_DisplayUart (const sMessage_t message) {
+    TRACE_INFO(message.data);
 
-    g_display_message[0] = '\0';
+    return true;
+}
+
+bool Reaction_Test_App_DisplayLcd (const sMessage_t message, const eLcdRow_t row, const eLcdColumn_t column, const eLcdOption_t option) {
+    if (!LCD_API_Print(LCD_DISPLAY, &message, row, column, option)) {
+        TRACE_ERR("Failed to print message on LCD\n");
+
+        return false;
+    }
 
     return true;
 }
@@ -841,8 +867,12 @@ void Reaction_Test_HandleGameError (eGameError_t error) {
 
     g_game_mode_instance.game_mode_reset(g_game_mode_instance.game_mode_data);
 
-    snprintf(g_message.data, g_message.size, "Game Error [%d]\n", error);
-    Reaction_Test_App_Display();
+    snprintf(g_message.data, UART_MESSAGE_SIZE, "Game Error [%d]\n", error);
+    Reaction_Test_App_DisplayUart(g_message);
+
+    LCD_API_Clear(eLcd_1);
+
+    Reaction_Test_App_DisplayLcd(g_message, eLcdRow_1, eLcdColumn_1, eLcdOption_None);
 
     g_reaction_test_state = eReactionTestState_Init;
 

@@ -6,6 +6,7 @@
 
 #include <stdbool.h>
 #include <stdint.h>
+#include "lcd_api.h"
 
 /**********************************************************************************************************************
  * Exported definitions and macros
@@ -18,6 +19,9 @@
 #define DEFAULT_HAND_OFFSET 50
 #define DEFAULT_DISTANCE_THRESHOLD_MM 10
 #define ACCURACY_SIGMA 100
+
+#define UART_MESSAGE_SIZE 64
+#define LCD_MESSAGE_SIZE 16
 
 /**********************************************************************************************************************
  * Exported types
@@ -77,7 +81,8 @@ bool Reaction_Test_App_SetRandomTargetPossition (const eModule_t module_data);
 uint16_t Reaction_Test_App_GetTargetDistanceMm (const eModule_t module_data);
 bool Reaction_Test_App_ActiveteModule (const eModule_t module_data, const sModuleState_t state);
 bool Reaction_Test_App_StartDelayTimer (const eModule_t module_data, const uint32_t delay);
-bool Reaction_Test_App_Display (void);
+bool Reaction_Test_App_DisplayUart (const sMessage_t message);
+bool Reaction_Test_App_DisplayLcd (const sMessage_t message, const eLcdRow_t row, const eLcdColumn_t column, const eLcdOption_t option);
 bool Reaction_Test_WaitForClear (const eModule_t module);
 void Reaction_Test_HandleGameError (eGameError_t error);
 bool Reaction_Test_IsCorrectModule (const eModule_t module);
