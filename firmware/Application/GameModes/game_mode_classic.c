@@ -3,13 +3,16 @@
  *********************************************************************************************************************/
 
 #include "game_mode_classic.h"
+
 #include <string.h>
 #include <math.h>
 #include "ws2812b_api.h"
+#include "lcd_api.h"
 #include "debug_api.h"
 #include "heap_api.h"
 #include "framework_config.h"
 #include "math_utils.h"
+#include "message.h"
 
 /**********************************************************************************************************************
  * Private definitions and macros
@@ -172,9 +175,27 @@ void Game_Mode_Classic_Process (void *context) {
     data->average_accuracy += data->current_accuracy;
     data->average_reaction_time += data->current_reaction_time;
 
-    snprintf(game_mode->display_message.data, game_mode->display_message.size, "Time: %d ms, Target: %d mm, Reg: %d mm, Acc: %d\n", data->current_reaction_time, data->target_distance, game_mode->registerd_distance, data->current_accuracy);
+    char uart_message[UART_MESSAGE_SIZE];
+    char lcd_message[LCD_MESSAGE_SIZE + 1];
 
-    Reaction_Test_App_Display();
+    sMessage_t message = {0};
+
+    snprintf(uart_message, UART_MESSAGE_SIZE, "Time: %d ms, Target: %d mm, Reg: %d mm, Acc: %d\n", data->current_reaction_time, data->target_distance, game_mode->registerd_distance, data->current_accuracy);
+    message.data = uart_message;
+
+    Reaction_Test_App_DisplayUart(message);
+
+    snprintf(lcd_message, LCD_MESSAGE_SIZE + 1, "Time: %d ms", data->current_reaction_time);
+    message.data = lcd_message;
+    message.size = strlen(message.data);
+
+    Reaction_Test_App_DisplayLcd(message, eLcdRow_1, eLcdColumn_1, eLcdOption_None);
+
+    snprintf(lcd_message, LCD_MESSAGE_SIZE + 1, "Acc: %d", data->current_accuracy);
+    message.data = lcd_message;
+    message.size = strlen(message.data);
+
+    Reaction_Test_App_DisplayLcd(message, eLcdRow_2, eLcdColumn_1, eLcdOption_None);
 
     return;
 }
@@ -207,11 +228,34 @@ void Game_Mode_Classic_Stop (void *context) {
     data->average_accuracy /= game_mode->total_attempts;
     data->average_reaction_time /= game_mode->total_attempts;
 
-    snprintf(game_mode->display_message.data, game_mode->display_message.size, "Average reaction time: %d ms\n", data->average_reaction_time);
-    Reaction_Test_App_Display();
+    char uart_message[UART_MESSAGE_SIZE];
+    char lcd_message[LCD_MESSAGE_SIZE + 1];
 
-    snprintf(game_mode->display_message.data, game_mode->display_message.size, "Average accuracy: %d\n", data->average_accuracy);
-    Reaction_Test_App_Display();
+    sMessage_t message = {0};
+
+    snprintf(uart_message, UART_MESSAGE_SIZE, "Average reaction time: %d ms\n", data->average_reaction_time);
+    message.data = uart_message;
+
+    Reaction_Test_App_DisplayUart(message);
+
+    snprintf(uart_message, UART_MESSAGE_SIZE, "Average accuracy: %d\n", data->average_accuracy);
+    message.data = uart_message;
+
+    Reaction_Test_App_DisplayUart(message);
+
+    LCD_API_Clear(eLcd_1);
+
+    snprintf(lcd_message, LCD_MESSAGE_SIZE + 1, "Avg time %4dms", data->average_reaction_time);
+    message.data = lcd_message;
+    message.size = strlen(message.data);
+
+    Reaction_Test_App_DisplayLcd(message, eLcdRow_1, eLcdColumn_1, eLcdOption_None);
+
+    snprintf(lcd_message, LCD_MESSAGE_SIZE + 1, "Avg acc: %d", data->average_accuracy);
+    message.data = lcd_message;
+    message.size = strlen(message.data);
+
+    Reaction_Test_App_DisplayLcd(message, eLcdRow_2, eLcdColumn_1, eLcdOption_None);
 
     return;
 }
