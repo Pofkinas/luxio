@@ -1,0 +1,3 @@
+[submodule "firmware/Framework"]
+	path = firmware/Framework
+	url = https://github.com/Pofkinas/pdf.git
